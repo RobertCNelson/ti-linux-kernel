@@ -3558,6 +3558,166 @@ static struct device_driver genpd_provider_drv = {
 	.suppress_bind_attrs = true,
 };
 
+/**
+ * of_genpd_remove_subdomain_map - Remove subdomain relationships from map
+ *
+ * @np: pointer to parent node containing map property
+ * @data: pointer to PM domain onecell data
+ *
+ * Iterate over entries in a power-domain-map, and remove the subdomain
+ * relationships that were previously established by of_genpd_add_subdomain_map().
+ * This allows cleanup during driver removal or error handling.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int of_genpd_remove_subdomain_map(struct device_node *np,
+				  struct genpd_onecell_data *data)
+{
+	struct generic_pm_domain *genpd, *parent_genpd;
+	struct of_phandle_args child_args, parent_args;
+	int index = 0;
+	int ret = 0;
+	u32 child_index;
+
+	if (!np || !data)
+		return -EINVAL;
+
+	/* Iterate through power-domain-map entries using the OF helper */
+	while (!of_parse_map_iter(np, "power-domain", &index,
+				   &child_args, &parent_args)) {
+		/* Extract the child domain index from the child specifier */
+		if (child_args.args_count < 1) {
+			of_node_put(parent_args.np);
+			continue;
+		}
+		child_index = child_args.args[0];
+
+		/* Validate child domain index */
+		if (child_index >= data->num_domains) {
+			of_node_put(parent_args.np);
+			continue;
+		}
+
+		genpd = data->domains[child_index];
+		if (!genpd) {
+			of_node_put(parent_args.np);
+			continue;
+		}
+
+		/* Get parent power domain from provider */
+		mutex_lock(&gpd_list_lock);
+
+		parent_genpd = genpd_get_from_provider(&parent_args);
+		if (IS_ERR(parent_genpd)) {
+			mutex_unlock(&gpd_list_lock);
+			of_node_put(parent_args.np);
+			dev_warn(&genpd->dev, "failed to get parent domain for removal\n");
+			continue;
+		}
+
+		/* Remove subdomain relationship */
+		ret = pm_genpd_remove_subdomain(parent_genpd, genpd);
+		mutex_unlock(&gpd_list_lock);
+		of_node_put(parent_args.np);
+
+		if (ret)
+			dev_warn(&genpd->dev, "failed to remove as subdomain of %s: %d\n",
+				 parent_genpd->name, ret);
+		else
+			dev_dbg(&genpd->dev, "removed as subdomain of %s\n",
+				parent_genpd->name);
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(of_genpd_remove_subdomain_map);
+
+/**
+ * of_genpd_add_subdomain_map - Parse and map child PM domains
+ *
+ * @np: pointer to parent node containing map property
+ * @data: pointer to PM domain onecell data
+ *
+ * Iterate over entries in a power-domain-map, and add them as
+ * children of the parent domain. If any child fails to be added,
+ * all previously added children are removed to maintain atomicity.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int of_genpd_add_subdomain_map(struct device_node *np,
+			       struct genpd_onecell_data *data)
+{
+	struct generic_pm_domain *genpd, *parent_genpd;
+	struct of_phandle_args child_args, parent_args;
+	int index = 0;
+	int ret = 0;
+	u32 child_index;
+
+	if (!np || !data)
+		return -EINVAL;
+
+	/* Iterate through power-domain-map entries using the OF helper */
+	while (!of_parse_map_iter(np, "power-domain", &index,
+				   &child_args, &parent_args)) {
+		/* Extract the child domain index from the child specifier */
+		if (child_args.args_count < 1) {
+			of_node_put(parent_args.np);
+			ret = -EINVAL;
+			goto cleanup;
+		}
+		child_index = child_args.args[0];
+
+		/* Validate child domain index */
+		if (child_index >= data->num_domains) {
+			of_node_put(parent_args.np);
+			pr_debug("map's child index (%u) > number of domains (%u).  Skipping.\n",
+				 child_index, data->num_domains);
+			ret = -EINVAL;
+			goto cleanup;
+		}
+
+		genpd = data->domains[child_index];
+		if (!genpd) {
+			of_node_put(parent_args.np);
+			continue;
+		}
+
+		/* Get parent power domain from provider and establish subdomain relationship */
+		mutex_lock(&gpd_list_lock);
+
+		parent_genpd = genpd_get_from_provider(&parent_args);
+		if (IS_ERR(parent_genpd)) {
+			mutex_unlock(&gpd_list_lock);
+			of_node_put(parent_args.np);
+			ret = PTR_ERR(parent_genpd);
+			dev_err(&genpd->dev, "failed to get parent domain: %d\n", ret);
+			goto cleanup;
+		}
+
+		ret = genpd_add_subdomain(parent_genpd, genpd);
+		mutex_unlock(&gpd_list_lock);
+		of_node_put(parent_args.np);
+
+		if (ret) {
+			dev_err(&genpd->dev, "failed to add as subdomain of %s: %d\n",
+				parent_genpd->name, ret);
+			goto cleanup;
+		}
+
+		dev_dbg(&genpd->dev, "added as subdomain of %s\n",
+			parent_genpd->name);
+	}
+
+	return 0;
+
+cleanup:
+	/* Remove all successfully added subdomains using the removal function */
+	pr_err("rolling back child map additions due to error: %d\n", ret);
+	of_genpd_remove_subdomain_map(np, data);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(of_genpd_add_subdomain_map);
+
 static int __init genpd_bus_init(void)
 {
 	int ret;
