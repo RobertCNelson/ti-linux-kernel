@@ -1642,6 +1642,169 @@ put:
 EXPORT_SYMBOL(of_parse_phandle_with_args_map);
 
 /**
+ * of_parse_map_iter() - Iterate through entries in a nexus node map
+ * @np:			pointer to a device tree node containing the map
+ * @stem_name:		stem of property names (e.g., "power-domain" for "power-domain-map")
+ * @index:		pointer to iteration index (set to 0 for first call)
+ * @child_args:		pointer to structure to fill with child specifier (can be NULL)
+ * @parent_args:	pointer to structure to fill with parent phandle and specifier
+ *
+ * This function iterates through a nexus node map property as defined in DT spec 2.5.1.
+ * Each map entry has the format: <child_specifier phandle parent_specifier>
+ *
+ * On each call, it extracts one map entry and fills child_args (if provided) with the
+ * child specifier and parent_args with the parent phandle and specifier.
+ * The index pointer is updated to point to the next entry for the following call.
+ *
+ * Example usage::
+ *
+ *  int index = 0;
+ *  struct of_phandle_args child_args, parent_args;
+ *
+ *  while (!of_parse_map_iter(np, "power-domain", &index, &child_args, &parent_args)) {
+ *      // Process child_args and parent_args
+ *      of_node_put(parent_args.np);
+ *  }
+ *
+ * Caller is responsible for calling of_node_put() on parent_args.np.
+ *
+ * Return: 0 on success, -ENOENT when iteration is complete, or negative error code on failure.
+ */
+int of_parse_map_iter(const struct device_node *np,
+		       const char *stem_name,
+		       int *index,
+		       struct of_phandle_args *child_args,
+		       struct of_phandle_args *parent_args)
+{
+	char *cells_name __free(kfree) = kasprintf(GFP_KERNEL, "#%s-cells", stem_name);
+	char *map_name __free(kfree) = kasprintf(GFP_KERNEL, "%s-map", stem_name);
+	char *mask_name __free(kfree) = kasprintf(GFP_KERNEL, "%s-map-mask", stem_name);
+	char *pass_name __free(kfree) = kasprintf(GFP_KERNEL, "%s-map-pass-thru", stem_name);
+	static const __be32 dummy_mask[] = { [0 ... MAX_PHANDLE_ARGS] = cpu_to_be32(~0) };
+	static const __be32 dummy_pass[] = { [0 ... MAX_PHANDLE_ARGS] = cpu_to_be32(0) };
+	struct of_phandle_iterator it;
+	const __be32 *map, *mask, *pass;
+	__be32 child_spec[MAX_PHANDLE_ARGS];
+	u32 child_cells, parent_cells;
+	int i, entry_idx, ret;
+
+	if (!np || !stem_name || !index || !parent_args)
+		return -EINVAL;
+
+	if (!cells_name || !map_name || !mask_name || !pass_name)
+		return -ENOMEM;
+
+	/* Initialize iterator to get the map property */
+	ret = of_phandle_iterator_init(&it, np, map_name, cells_name, -1);
+	if (ret)
+		return ret;
+
+	map = it.cur;
+
+	/* Get child #cells */
+	if (of_property_read_u32(np, cells_name, &child_cells))
+		return -EINVAL;
+
+	/* Get the mask property (optional) */
+	mask = of_get_property(np, mask_name, NULL);
+	if (!mask)
+		mask = dummy_mask;
+
+	/* Get the pass-thru property (optional) */
+	pass = of_get_property(np, pass_name, NULL);
+	if (!pass)
+		pass = dummy_pass;
+
+	/* Iterate through map to find the entry at the requested index */
+	entry_idx = 0;
+	while (it.cur + child_cells + 1 < it.list_end) {
+		/* If this is the entry we're looking for, extract it */
+		if (entry_idx == *index) {
+			/* Save masked child specifier for pass-thru processing */
+			for (i = 0; i < child_cells && i < MAX_PHANDLE_ARGS; i++)
+				child_spec[i] = map[i] & mask[i];
+
+			/* Extract child specifier if requested */
+			if (child_args) {
+				child_args->np = (struct device_node *)np;
+				child_args->args_count = child_cells;
+				for (i = 0; i < child_cells && i < MAX_PHANDLE_ARGS; i++)
+					child_args->args[i] = be32_to_cpu(map[i]);
+			}
+
+			/* Move past child specifier */
+			it.cur += child_cells;
+
+			/* Use iterator to read phandle and get parent node/cells */
+			it.phandle_end = it.cur;
+			ret = of_phandle_iterator_next(&it);
+			if (ret) {
+				if (it.node)
+					of_node_put(it.node);
+				return ret;
+			}
+
+			parent_args->np = it.node;
+			it.node = NULL; /* Ownership transferred to parent_args */
+			parent_cells = it.cur_count;
+			map = it.cur;
+
+			/* Check for malformed properties */
+			if (WARN_ON(parent_cells > MAX_PHANDLE_ARGS)) {
+				of_node_put(parent_args->np);
+				return -EINVAL;
+			}
+
+			/*
+			 * Copy parent specifier into the out_args structure, keeping
+			 * the bits specified in <stem>-map-pass-thru per DT spec 2.5.1
+			 */
+			parent_args->args_count = parent_cells;
+			for (i = 0; i < parent_cells; i++) {
+				__be32 val = map[i];
+
+				if (i < child_cells) {
+					val &= ~pass[i];
+					val |= child_spec[i] & pass[i];
+				}
+
+				parent_args->args[i] = be32_to_cpu(val);
+			}
+
+			/* Advance index for next iteration */
+			(*index)++;
+			return 0;
+		}
+
+		/* Skip this entry: child_cells + phandle + parent_cells */
+		it.cur += child_cells;
+
+		/* Use iterator to read phandle and skip parent cells */
+		it.phandle_end = it.cur;
+		ret = of_phandle_iterator_next(&it);
+		if (ret) {
+			if (it.node)
+				of_node_put(it.node);
+			return ret;
+		}
+
+		/* Move forward to next entry and clean up node reference */
+		it.cur = it.phandle_end;
+		map = it.cur;
+		of_node_put(it.node);
+		it.node = NULL;
+
+		entry_idx++;
+	}
+
+	/* Reached end of map without finding the requested index */
+	if (it.node)
+		of_node_put(it.node);
+	return -ENOENT;
+}
+EXPORT_SYMBOL(of_parse_map_iter);
+
+/**
  * of_count_phandle_with_args() - Find the number of phandles references in a property
  * @np:		pointer to a device tree node containing a list
  * @list_name:	property name that contains a list
