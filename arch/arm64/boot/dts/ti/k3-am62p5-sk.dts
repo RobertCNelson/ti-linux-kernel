@@ -944,7 +944,12 @@
 			<&system_standby>;
 };
 
+&dss_oldi_io_ctrl {
+       bootph-all;
+};
+
 &dss0 {
+	bootph-all;
 	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&main_dpi_pins_default>;
