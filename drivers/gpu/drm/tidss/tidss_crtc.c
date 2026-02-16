@@ -111,6 +111,7 @@ static int tidss_crtc_atomic_check(struct drm_crtc *crtc,
 	if (drm_atomic_crtc_needs_modeset(crtc_state))
 		drm_mode_set_crtcinfo(mode, 0);
 
+	drm_mode_set_crtcinfo(&crtc_state->adjusted_mode, 0);
 	return dispc_vp_bus_check(dispc, hw_videoport, crtc_state);
 }
 
