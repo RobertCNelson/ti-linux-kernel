@@ -58,6 +58,7 @@
 
 #define ICSSG_MAX_RFLOWS	8	/* per slice */
 
+#define ICSSG_CUT_THRU_BIT	BIT(7)
 #define ICSSG_NUM_PA_STATS	32
 #define ICSSG_NUM_MIIG_STATS	60
 /* Number of ICSSG related stats */
@@ -115,6 +116,15 @@ enum prueth_mac {
 	PRUETH_MAC1,
 	PRUETH_NUM_MACS,
 	PRUETH_MAC_INVALID,
+};
+
+enum prueth_devlink_param_id {
+	PRUETH_DEVLINK_PARAM_ID_BASE = DEVLINK_PARAM_GENERIC_ID_MAX,
+	PRUETH_DL_PARAM_CUT_THRU_EN,
+};
+
+struct prueth_devlink {
+	struct prueth *prueth;
 };
 
 struct prueth_tx_chn {
@@ -241,6 +251,8 @@ struct prueth_emac {
 
 	struct pruss_mem_region dram;
 
+	struct devlink_port devlink_port;
+	u8 cut_thru_queue_map;
 	bool offload_fwd_mark;
 	int port_vlan;
 
@@ -324,6 +336,7 @@ struct icssg_firmwares {
  * @icssg_switch_firmwares: Firmware names for SWITCH mode, indexed per MAC
  * @icssg_hsr_firmwares: Firmware names for HSR mode, indexed per MAC
  * @icssg_prp_firmwares: Firmware names for PRP mode, indexed per MAC
+ * @devlink: pointer to devlink
  */
 struct prueth {
 	struct device *dev;
@@ -372,6 +385,7 @@ struct prueth {
 	struct icssg_firmwares icssg_switch_firmwares[PRUETH_NUM_MACS];
 	struct icssg_firmwares icssg_hsr_firmwares[PRUETH_NUM_MACS];
 	struct icssg_firmwares icssg_prp_firmwares[PRUETH_NUM_MACS];
+	struct devlink *devlink;
 };
 
 struct emac_tx_ts_response {
