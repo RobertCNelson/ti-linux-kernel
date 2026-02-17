@@ -65,12 +65,12 @@ struct tac5x1x_priv {
 	struct tac5x1x_setup_gpio *gpio_setup;
 	struct tac5x1x_irqinfo irqinfo;
 	struct tac5x1x_input_diag_config input_diag_config;
+	struct regulator_bulk_data supplies[2];
 };
 
-static int tac5x1x_num_regulators = 2;
-static struct regulator_bulk_data tac5x1x_regulators[] = {
-	{.supply = "iovdd"},
-	{.supply = "avdd"},
+static const char * const tac5x1x_supply_names[] = {
+	"avdd",
+	"iovdd",
 };
 
 struct mask_to_txt {
@@ -1669,9 +1669,16 @@ static s32 tac5x1x_component_probe(struct snd_soc_component *component)
 	return ret;
 }
 
-static void tac5x1x_disable_regulators(struct tac5x1x_priv *tac5x1x)
+static s32 tac5x1x_enable_regulators(struct tac5x1x_priv *tac5x1x)
 {
-	regulator_bulk_disable(tac5x1x_num_regulators, tac5x1x_regulators);
+	return regulator_bulk_enable(ARRAY_SIZE(tac5x1x->supplies),
+			tac5x1x->supplies);
+}
+
+static s32 tac5x1x_disable_regulators(struct tac5x1x_priv *tac5x1x)
+{
+	return regulator_bulk_disable(ARRAY_SIZE(tac5x1x->supplies),
+			tac5x1x->supplies);
 }
 
 #ifdef CONFIG_PM
@@ -1679,13 +1686,16 @@ static s32 tac5x1x_soc_suspend(struct snd_soc_component *component)
 {
 	struct tac5x1x_priv *tac5x1x =
 		snd_soc_component_get_drvdata(component);
+	s32 ret;
 
 	regcache_cache_only(tac5x1x->regmap, true);
 	regcache_mark_dirty(tac5x1x->regmap);
 
-	tac5x1x_disable_regulators(tac5x1x);
+	ret = tac5x1x_disable_regulators(tac5x1x);
+	if (ret)
+		dev_err(tac5x1x->dev, "Failed to disable regulators\n");
 
-	return 0;
+	return ret;
 }
 
 static s32 tac5x1x_soc_resume(struct snd_soc_component *component)
@@ -1694,8 +1704,7 @@ static s32 tac5x1x_soc_resume(struct snd_soc_component *component)
 		snd_soc_component_get_drvdata(component);
 	s32 ret;
 
-	ret = regulator_bulk_enable(tac5x1x_num_regulators,
-				    tac5x1x_regulators);
+	ret = tac5x1x_enable_regulators(tac5x1x);
 	if (ret) {
 		dev_err(tac5x1x->dev, "Failed to enable regulators\n");
 		return ret;
@@ -1942,24 +1951,24 @@ static s32 tac5x1x_setup_regulators(struct device *dev,
 				    struct tac5x1x_priv *tac5x1x)
 {
 	int ret;
+	int i;
 
-	ret = devm_regulator_bulk_get(dev, tac5x1x_num_regulators,
-				      tac5x1x_regulators);
+	for (i = 0; i < ARRAY_SIZE(tac5x1x->supplies); i++)
+		tac5x1x->supplies[i].supply = tac5x1x_supply_names[i];
+
+	ret = devm_regulator_bulk_get(dev, ARRAY_SIZE(tac5x1x->supplies),
+				      tac5x1x->supplies);
 	if (ret) {
 		dev_err(dev, "Failed to get regulators\n");
 		return ret;
 	}
 
-	ret = regulator_bulk_enable(tac5x1x_num_regulators,
-				    tac5x1x_regulators);
-	if (ret) {
+	ret = regulator_bulk_enable(ARRAY_SIZE(tac5x1x->supplies),
+				    tac5x1x->supplies);
+	if (ret)
 		dev_err(dev, "Failed to enable regulators\n");
-		regulator_bulk_disable(tac5x1x_num_regulators,
-				       tac5x1x_regulators);
-		return ret;
-	}
 
-	return 0;
+	return ret;
 }
 
 static s32 tac5x1x_probe(struct device *dev, struct regmap *regmap,
