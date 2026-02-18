@@ -362,4 +362,27 @@
 #define FDB_LOCKS_OFFSET        (FDB_FLOOD_ENABLE_FLAGS_OFFSET + \
 				 FDB_FLOOD_ENABLE_FLAGS_SIZE)
 
+/* Below Rx Interrupt pacing defines. */
+/* shared RAM */
+/* 1 byte for pace control */
+#define INTR_PAC_STATUS_OFFSET                       0x1FAF
+#define INTR_PAC_STATUS_OFFSET_PRU1                  0x1FAE
+#define INTR_PAC_STATUS_OFFSET_PRU0                  0x1FAF
+/* Interrupt Pacing disabled, Adaptive logic disabled */
+#define INTR_PAC_DIS_ADP_LGC_DIS                     0x0
+/* Interrupt Pacing enabled, Adaptive logic disabled */
+#define INTR_PAC_ENA_ADP_LGC_DIS                     0x1
+/* Interrupt Pacing enabled, Adaptive logic enabled */
+#define INTR_PAC_ENA_ADP_LGC_ENA                     0x2
+
+/* 4 bytes | previous TS from eCAP TSCNT for PRU 0 */
+#define INTR_PAC_PREV_TS_OFFSET_PRU0                 0x1FB0
+/* 4 bytes | timer expiration value for PRU 0 */
+#define INTR_PAC_TMR_EXP_OFFSET_PRU0                 0x1FB4
+/* 4 bytes | previous TS from eCAP TSCNT for PRU 1 */
+#define INTR_PAC_PREV_TS_OFFSET_PRU1                 0x1FB8
+/* 4 bytes | timer expiration value for PRU 1 */
+#define INTR_PAC_TMR_EXP_OFFSET_PRU1                 0x1FBC
+#define INTR_PAC_PREV_TS_RESET_VAL                   0x0
+
 #endif /* __ICSS_SWITCH_H */
