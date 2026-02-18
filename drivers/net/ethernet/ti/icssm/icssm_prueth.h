@@ -29,6 +29,9 @@
 #define EMAC_MAX_FRM_SUPPORT (ETH_HLEN + VLAN_HLEN + ETH_DATA_LEN + \
 			      ICSSM_LRE_TAG_SIZE)
 
+/* default timer for NSP and HSR/PRP */
+#define PRUETH_NSP_TIMER_MS	(100) /* Refresh NSP counters every 100ms */
+
 #define PRUETH_REG_DUMP_VER		1
 
 /* Encoding: 32-16: Reserved, 16-8: Reg dump version, 8-0: Ethertype */
@@ -97,6 +100,7 @@ struct prueth_queue_info {
  * @length: length of packet
  * @broadcast: this packet is a broadcast packet
  * @error: this packet has an error
+ * @sv_frame: indicate if the frame is a SV frame for HSR/PRP
  * @lookup_success: src mac found in FDB
  * @flood: packet is to be flooded
  * @timestamp: Specifies if timestamp is appended to the packet
@@ -107,6 +111,7 @@ struct prueth_packet_info {
 	unsigned int length;
 	bool broadcast;
 	bool error;
+	bool sv_frame;
 	bool lookup_success;
 	bool flood;
 	bool timestamp;
@@ -325,6 +330,34 @@ struct port_statistics {
 	u32 multicast_dropped;
 };
 
+/* Firmware offsets/size information */
+struct prueth_fw_offsets {
+	u32 index_array_offset;
+	u32 bin_array_offset;
+	u32 nt_array_offset;
+	u32 index_array_loc;
+	u32 bin_array_loc;
+	u32 nt_array_loc;
+	u32 index_array_max_entries;
+	u32 bin_array_max_entries;
+	u32 nt_array_max_entries;
+	u32 vlan_ctrl_byte;
+	u32 vlan_filter_tbl;
+	u32 mc_ctrl_byte;
+	u32 mc_filter_mask;
+	u32 mc_filter_tbl;
+	/* IEP wrap is used in the rx packet ordering logic and
+	 * is different for ICSSM v1.0 vs 2.1
+	 */
+	u32 iep_wrap;
+	u16 hash_mask;
+};
+
+struct nsp_counter {
+	unsigned long cookie;
+	u16 credit;
+};
+
 /* data for each emac port */
 struct prueth_emac {
 	struct prueth *prueth;
@@ -351,14 +384,25 @@ struct prueth_emac {
 	const char *phy_id;
 	u32 msg_enable;
 	u8 mac_addr[6];
-	unsigned char mc_filter_mask[ETH_ALEN]; /* for multicast filtering */
+	unsigned char mc_filter_mask[ETH_ALEN];	/* for multicast filtering */
 	phy_interface_t phy_if;
 
 	/* spin lock used to protect
 	 * during link configuration
 	 */
 	spinlock_t lock;
-	spinlock_t addr_lock;   /* serialize access to VLAN/MC filter table */
+	spinlock_t addr_lock;	/* serialize access to VLAN/MC filter table */
+
+	struct nsp_counter nsp_bc;
+	struct nsp_counter nsp_mc;
+	struct nsp_counter nsp_uc;
+	bool nsp_enabled;
+
+	struct sk_buff *ptp_skb[PRUETH_PTP_TS_EVENTS];
+	spinlock_t ptp_skb_lock; /* spin lock used to protect PTP */
+	int emac_ptp_tx_irq;
+	bool ptp_tx_enable;
+	bool ptp_rx_enable;
 
 	struct hrtimer tx_hrtimer;
 	struct prueth_emac_stats stats;
@@ -392,16 +436,28 @@ struct prueth {
 	size_t ocmc_ram_size;
 	u8 emac_configured;
 	u8 br_members;
+	u8 base_mac[ETH_ALEN];
 };
 
 extern const struct prueth_queue_desc queue_descs[][NUM_QUEUES];
 extern const struct ethtool_ops emac_ethtool_ops;
 
+int icssm_emac_ndo_setup_tc(struct net_device *dev, enum tc_setup_type type,
+			    void *type_data);
 void icssm_parse_packet_info(struct prueth *prueth, u32 buffer_descriptor,
 			     struct prueth_packet_info *pkt_info);
 int icssm_emac_rx_packet(struct prueth_emac *emac, u16 *bd_rd_ptr,
 			 struct prueth_packet_info *pkt_info,
 			 const struct prueth_queue_info *rxqueue);
+void icssm_emac_mc_filter_bin_allow(struct prueth_emac *emac, u8 hash);
+void icssm_emac_mc_filter_bin_disallow(struct prueth_emac *emac, u8 hash);
+u8 icssm_emac_get_mc_hash(u8 *mac, u8 *mask);
+
+int icssm_emac_add_del_vid(struct prueth_emac *emac,
+			   bool add, __be16 proto, u16 vid);
+irqreturn_t icssm_prueth_ptp_tx_irq_handle(int irq, void *dev);
+irqreturn_t icssm_prueth_ptp_tx_irq_work(int irq, void *dev);
+
 void icssm_emac_mc_filter_bin_allow(struct prueth_emac *emac, u8 hash);
 void icssm_emac_mc_filter_bin_disallow(struct prueth_emac *emac, u8 hash);
 u8 icssm_emac_get_mc_hash(u8 *mac, u8 *mask);

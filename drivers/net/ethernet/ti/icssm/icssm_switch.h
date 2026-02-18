@@ -223,6 +223,11 @@
 #define P1_Q1_TX_CONTEXT_OFFSET		TX_CONTEXT_P1_Q1_OFFSET_ADDR
 #define TX_CONTEXT_P1_Q1_OFFSET_ADDR	SWITCH_SPECIFIC_DRAM1_START_OFFSET
 
+/* Shared RAM Offsets for Switch */
+/* NSP (Network Storm Prevention) timer re-uses NT timer */
+#define PRUETH_NSP_CREDIT_SHIFT       8
+#define PRUETH_NSP_ENABLE            BIT(0)
+
 /* DRAM Offsets for EMAC
  * Present on Both DRAM0 and DRAM1
  */
