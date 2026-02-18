@@ -362,6 +362,8 @@
 #define FDB_LOCKS_OFFSET        (FDB_FLOOD_ENABLE_FLAGS_OFFSET + \
 				 FDB_FLOOD_ENABLE_FLAGS_SIZE)
 
+#define ICSS_COMMON_TIMESTAMP_ARRAY_OFFSET          0xC200
+
 /* Below Rx Interrupt pacing defines. */
 /* shared RAM */
 /* 1 byte for pace control */
