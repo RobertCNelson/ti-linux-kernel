@@ -412,6 +412,7 @@ struct sk_buff *hsr_create_tagged_frame(struct hsr_frame_info *frame,
 		sred->lsdu_size = s & 0xfff;
 		sred->pathid = (s >> 12) & 0xf;
 		sred->seqnr = hsr_get_skb_sequence_nr(skb);
+		frame->is_l2ptp = true;
 	}
 
 	return skb;
@@ -622,6 +623,7 @@ hsr_directed_tx_ports(struct hsr_frame_info *frame)
 static void hsr_forward_do(struct hsr_frame_info *frame)
 {
 	unsigned int dir_ports = 0;
+	int skip_tx_duplicate = -1;
 	struct hsr_port *port;
 	struct sk_buff *skb;
 	bool sent = false;
@@ -644,6 +646,9 @@ static void hsr_forward_do(struct hsr_frame_info *frame)
 		 * one port.
 		 */
 		if ((port->dev->features & NETIF_F_HW_HSR_DUP) && sent)
+			continue;
+
+		if (port->type == HSR_PT_SLAVE_B && skip_tx_duplicate == 0)
 			continue;
 
 		/* Don't send frame over port where it has been sent before.
@@ -686,14 +691,19 @@ static void hsr_forward_do(struct hsr_frame_info *frame)
 			continue;
 		}
 
+		if (frame->is_l2ptp)
+			skip_tx_duplicate = -1;
+
 		skb->dev = port->dev;
 		if (port->type == HSR_PT_MASTER) {
 			hsr_deliver_master(skb, port, frame->node_src);
 		} else {
-			if (!hsr_xmit(skb, port, frame))
+			if (skip_tx_duplicate != 0) {
+				skip_tx_duplicate = hsr_xmit(skb, port, frame);
 				if (port->type == HSR_PT_SLAVE_A ||
 				    port->type == HSR_PT_SLAVE_B)
 					sent = true;
+			}
 		}
 	}
 }
