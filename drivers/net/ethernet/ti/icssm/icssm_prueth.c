@@ -1013,6 +1013,7 @@ static int icssm_emac_ndo_open(struct net_device *ndev)
 		if (ret)
 			goto iep_exit;
 	}
+	icssm_emac_set_stats(emac, &emac->pstats);
 
 	ret = icssm_emac_request_irqs(emac);
 	if (ret)
@@ -1078,6 +1079,8 @@ static int icssm_emac_ndo_stop(struct net_device *ndev)
 		icssm_prueth_sw_shutdown_prus(emac, ndev);
 	else
 		rproc_shutdown(emac->pru);
+
+	icssm_emac_get_stats(emac, &emac->pstats);
 
 	/* free rx interrupts */
 	free_irq(emac->rx_irq, ndev);
@@ -1251,6 +1254,9 @@ static void icssm_emac_ndo_get_stats64(struct net_device *ndev,
 				       struct rtnl_link_stats64 *stats)
 {
 	struct prueth_emac *emac = netdev_priv(ndev);
+	struct port_statistics pstats;
+
+	icssm_emac_get_stats(emac, &pstats);
 
 	stats->rx_packets = emac->stats.rx_packets;
 	stats->rx_bytes = emac->stats.rx_bytes;
@@ -1259,6 +1265,8 @@ static void icssm_emac_ndo_get_stats64(struct net_device *ndev,
 	stats->tx_dropped = emac->stats.tx_dropped;
 	stats->rx_over_errors = emac->stats.rx_over_errors;
 	stats->rx_length_errors = emac->stats.rx_length_errors;
+	stats->tx_errors = ndev->stats.tx_errors;
+	stats->multicast = pstats.rx_mcast;
 }
 
 /* enable/disable MC filter */
@@ -1591,6 +1599,7 @@ static int icssm_prueth_netdev_init(struct prueth *prueth,
 
 	ndev->dev.of_node = eth_node;
 	ndev->netdev_ops = &emac_netdev_ops;
+	ndev->ethtool_ops = &emac_ethtool_ops;
 
 	netif_napi_add(ndev, &emac->napi, icssm_emac_napi_poll);
 
