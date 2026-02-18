@@ -1282,7 +1282,6 @@ int icssm_emac_rx_packet(struct prueth_emac *emac, u16 *bd_rd_ptr,
 	unsigned int actual_pkt_len;
 	bool buffer_wrapped = false;
 	void *src_addr, *dst_addr;
-	u16 start_offset = 0;
 	bool prp_rct = false;
 	u8 offset = 0, *ptr;
 	struct sk_buff *skb;
@@ -1299,11 +1298,9 @@ int icssm_emac_rx_packet(struct prueth_emac *emac, u16 *bd_rd_ptr,
 	int adjust_for_dummy_hsr_tag = 0;
 	u8 *check_vlan_ptr;
 
-	if (PRUETH_IS_HSR(emac->prueth))
-		start_offset = (pkt_info->start_offset ?
-				ICSS_LRE_TAG_RCT_SIZE : 0);
-	else if (PRUETH_IS_PRP(emac->prueth) && pkt_info->start_offset)
+	if (PRUETH_IS_PRP(emac->prueth) && pkt_info->start_offset)
 		prp_rct = true;
+
 	/* the PRU firmware deals mostly in pointers already
 	 * offset into ram, we would like to deal in indexes
 	 * within the queue we are working with for code
@@ -1340,13 +1337,14 @@ int icssm_emac_rx_packet(struct prueth_emac *emac, u16 *bd_rd_ptr,
 	}
 
 	/* Pkt len w/ HSR tag removed, If applicable */
-	actual_pkt_len = pkt_info->length - start_offset;
+	actual_pkt_len = pkt_info->length;
 
 	if (PRUETH_IS_HSR(emac->prueth)) {
 		/* HSR RX optimization: HSR Tag Removal Handling
 		 * Packet is sent with HSR Tag to Driver
+		 * If 0th bit in the BD is set then remove HSR tag.
 		 */
-		if (!start_offset && !pkt_info->timestamp)
+		if (pkt_info->start_offset && !pkt_info->timestamp)
 			actual_pkt_len -= ICSS_LRE_TAG_RCT_SIZE;
 	}
 
@@ -1407,7 +1405,10 @@ int icssm_emac_rx_packet(struct prueth_emac *emac, u16 *bd_rd_ptr,
 	 * Packet is sent with HSR Tag to Driver
 	 */
 	if (PRUETH_IS_HSR(emac->prueth)) {
-		if (!start_offset && !pkt_info->timestamp)
+		/* HSR: Ping working with corrupted HSR tag
+		 * If 0th bit in the BD is set then remove HSR tag
+		 */
+		if (pkt_info->start_offset && !pkt_info->timestamp)
 			src_addr += ICSS_LRE_TAG_RCT_SIZE;
 	}
 
@@ -1423,14 +1424,14 @@ int icssm_emac_rx_packet(struct prueth_emac *emac, u16 *bd_rd_ptr,
 		if (pkt_info->length < bytes)
 			bytes = pkt_info->length;
 
-		/* If applicable, account for the HSR tag removed */
-		bytes -= start_offset;
-
 		/* HSR RX optimization: HSR Tag Removal Handling
 		 * Packet is sent with HSR Tag to Driver
 		 */
 		if (PRUETH_IS_HSR(emac->prueth)) {
-			if (!start_offset && !pkt_info->timestamp)
+			/* HSR: Ping working with corrupted HSR tag
+			 * If 0th bit in the BD is set then remove HSR tag
+			 */
+			if (pkt_info->start_offset && !pkt_info->timestamp)
 				bytes -= ICSS_LRE_TAG_RCT_SIZE;
 		}
 
