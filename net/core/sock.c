@@ -2984,6 +2984,7 @@ EXPORT_SYMBOL(sock_alloc_send_pskb);
 int __sock_cmsg_send(struct sock *sk, struct cmsghdr *cmsg,
 		     struct sockcm_cookie *sockc)
 {
+	struct skb_redundant_info *cred;
 	u32 tsflags;
 
 	BUILD_BUG_ON(SOF_TIMESTAMPING_LAST == (1 << 31));
@@ -3042,6 +3043,16 @@ int __sock_cmsg_send(struct sock *sk, struct cmsghdr *cmsg,
 		if (cmsg->cmsg_len != CMSG_LEN(sizeof(u32)))
 			return -EINVAL;
 		sockc->dmabuf_id = *(u32 *)CMSG_DATA(cmsg);
+		break;
+	case SCM_REDUNDANT:
+		if (cmsg->cmsg_len !=
+		    CMSG_LEN(sizeof(struct skb_redundant_info))) {
+			return -EINVAL;
+		}
+
+		cred = (struct skb_redundant_info *)CMSG_DATA(cmsg);
+		memcpy(&sockc->redinfo, cred,
+		       sizeof(struct skb_redundant_info));
 		break;
 	default:
 		return -EINVAL;
@@ -3853,6 +3864,8 @@ int sock_recv_errqueue(struct sock *sk, struct msghdr *msg, int len,
 		       int level, int type)
 {
 	struct sock_extended_err ee;
+	struct skb_redundant_info *sred;
+	struct sock_exterr_skb *serr;
 	struct sk_buff *skb;
 	int copied, err;
 
@@ -3872,9 +3885,11 @@ int sock_recv_errqueue(struct sock *sk, struct msghdr *msg, int len,
 
 	sock_recv_timestamp(msg, sk, skb);
 
-	/* We must use a bounce buffer for CONFIG_HARDENED_USERCOPY=y */
-	ee = SKB_EXT_ERR(skb)->ee;
-	put_cmsg(msg, level, type, sizeof(ee), &ee);
+	sred = skb_redinfo(skb);
+	put_cmsg(msg, SOL_SOCKET, SCM_REDUNDANT, sizeof(*sred), sred);
+
+	serr = SKB_EXT_ERR(skb);
+	put_cmsg(msg, level, type, sizeof(serr->ee), &serr->ee);
 
 	msg->msg_flags |= MSG_ERRQUEUE;
 	err = copied;

@@ -1,0 +1,16 @@
+--- drivers/net/ethernet/ti/icssg/icssg_prueth.c
++++ drivers/net/ethernet/ti/icssg/icssg_prueth.c
+@@ -627,8 +627,11 @@ static void icssg_prueth_hsr_fdb_add_del(struct prueth_emac *emac,
+                                         int port_mask)
+ {
+ 
+-       icssg_fdb_add_del(emac, addr, vid, port_mask |
+-                         ICSSG_FDB_ENTRY_BLOCK, add);
++       icssg_fdb_add_del(emac, addr, vid,
++                         ICSSG_FDB_ENTRY_P0_MEMBERSHIP |
++                          ICSSG_FDB_ENTRY_BLOCK, add);
++       //icssg_fdb_add_del(emac, addr, vid, port_mask |
++       //                ICSSG_FDB_ENTRY_BLOCK, add);
+ 
+ 
+ 
