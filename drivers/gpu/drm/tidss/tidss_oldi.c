@@ -232,6 +232,9 @@ static void tidss_oldi_atomic_pre_enable(struct drm_bridge *bridge,
 	if (oldi->link_type == OLDI_MODE_SECONDARY_CLONE_SINGLE_LINK)
 		return;
 
+	if (oldi->tidss->shared_mode)
+		return;
+
 	connector = drm_atomic_get_new_connector_for_encoder(state,
 							     bridge->encoder);
 	if (WARN_ON(!connector))
@@ -263,6 +266,9 @@ static void tidss_oldi_atomic_post_disable(struct drm_bridge *bridge,
 	struct tidss_oldi *oldi = drm_bridge_to_tidss_oldi(bridge);
 
 	if (oldi->link_type == OLDI_MODE_SECONDARY_CLONE_SINGLE_LINK)
+		return;
+
+	if (oldi->tidss->shared_mode)
 		return;
 
 	/* Disable OLDI IO power */
