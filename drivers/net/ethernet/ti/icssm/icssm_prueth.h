@@ -118,6 +118,9 @@ struct prueth_queue_info {
  * @start_offset: indicates if packet has start offset for HSR/PRP
  */
 struct prueth_packet_info {
+	bool start_offset;
+	/* indicate whether Link local packet has HSR tag or not */
+	bool ll_has_no_hsr_tag;
 	bool shadow;
 	unsigned int port;
 	unsigned int length;
@@ -127,7 +130,6 @@ struct prueth_packet_info {
 	bool lookup_success;
 	bool flood;
 	bool timestamp;
-	bool start_offset;
 };
 
 /* In switch mode there are 3 real ports i.e. 3 mac addrs.

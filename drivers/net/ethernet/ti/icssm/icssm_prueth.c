@@ -1175,6 +1175,8 @@ void icssm_parse_packet_info(struct prueth *prueth, u32 buffer_descriptor,
 	else
 		pkt_info->start_offset = false;
 
+	pkt_info->ll_has_no_hsr_tag = (buffer_descriptor &
+				       PRUETH_LL_HAS_NO_HSRTAG_MASK);
 	pkt_info->length = (buffer_descriptor & PRUETH_BD_LENGTH_MASK) >>
 			   PRUETH_BD_LENGTH_SHIFT;
 	pkt_info->broadcast = !!(buffer_descriptor & PRUETH_BD_BROADCAST_MASK);
@@ -1288,6 +1290,11 @@ int icssm_emac_rx_packet(struct prueth_emac *emac, u16 *bd_rd_ptr,
 	int ret;
 	u64 ts;
 
+	/* Used Dummy HSR tag insertion for link local packets */
+	char dummy_hsr_tag[] = {0x89, 0x2f, 0x00, 0x00, 0x00, 0x00};
+	int adjust_for_dummy_hsr_tag = 0;
+	u8 *check_vlan_ptr;
+
 	if (PRUETH_IS_HSR(emac->prueth))
 		start_offset = (pkt_info->start_offset ?
 				ICSS_LRE_TAG_RCT_SIZE : 0);
@@ -1319,6 +1326,10 @@ int icssm_emac_rx_packet(struct prueth_emac *emac, u16 *bd_rd_ptr,
 
 	actual_pkt_len = pkt_info->length;
 
+	/* Need to add dummy hsr tag for PTP LL packets */
+	if (pkt_info->ll_has_no_hsr_tag)
+		actual_pkt_len += ICSS_LRE_TAG_RCT_SIZE;
+
 	/* Allocate a socket buffer for this packet */
 	skb = netdev_alloc_skb_ip_align(ndev, actual_pkt_len);
 	if (!skb) {
@@ -1339,6 +1350,30 @@ int icssm_emac_rx_packet(struct prueth_emac *emac, u16 *bd_rd_ptr,
 	src_addr = ocmc_ram + rxqueue->buffer_offset +
 		   (read_block * ICSS_BLOCK_SIZE);
 
+	if (pkt_info->ll_has_no_hsr_tag) {
+		/* Copy destination and source MAC address first */
+		memcpy(dst_addr, src_addr, PRUETH_ETH_TYPE_OFFSET);
+		src_addr += PRUETH_ETH_TYPE_OFFSET;
+		dst_addr += PRUETH_ETH_TYPE_OFFSET;
+
+		adjust_for_dummy_hsr_tag += PRUETH_ETH_TYPE_OFFSET;
+
+		/* Check for VLAN tag */
+		check_vlan_ptr = src_addr;
+		type = (*check_vlan_ptr++) << PRUETH_ETH_TYPE_UPPER_SHIFT;
+		type |= *check_vlan_ptr++;
+
+		if (type == ETH_P_8021Q) {
+			memcpy(dst_addr, src_addr, VLAN_HLEN);
+			src_addr += VLAN_HLEN;
+			dst_addr += VLAN_HLEN;
+			adjust_for_dummy_hsr_tag += VLAN_HLEN;
+		}
+		/* Copy dummy HSR tag */
+		memcpy(dst_addr, dummy_hsr_tag, ICSS_LRE_TAG_RCT_SIZE);
+		dst_addr += ICSS_LRE_TAG_RCT_SIZE;
+	}
+
 	/* Copy the data from PRU buffers(OCMC) to socket buffer(DRAM) */
 	if (buffer_wrapped) { /* wrapped around buffer */
 		int bytes = (buffer_desc_count - read_block) * ICSS_BLOCK_SIZE;
@@ -1352,18 +1387,19 @@ int icssm_emac_rx_packet(struct prueth_emac *emac, u16 *bd_rd_ptr,
 			bytes = pkt_info->length;
 
 		/* copy non-wrapped part */
-		memcpy(dst_addr, src_addr, bytes);
+		memcpy(dst_addr, src_addr, bytes - adjust_for_dummy_hsr_tag);
 
 		/* copy wrapped part */
-		dst_addr += bytes;
+		dst_addr += (bytes - adjust_for_dummy_hsr_tag);
 		remaining = actual_pkt_len - bytes;
 
 		src_addr = ocmc_ram + rxqueue->buffer_offset;
 		memcpy(dst_addr, src_addr, remaining);
 		src_addr += remaining;
 	} else {
-		memcpy(dst_addr, src_addr, actual_pkt_len);
-		src_addr += actual_pkt_len;
+		memcpy(dst_addr, src_addr, actual_pkt_len -
+		       adjust_for_dummy_hsr_tag);
+		src_addr += actual_pkt_len - adjust_for_dummy_hsr_tag;
 	}
 
 	if (PRUETH_IS_SWITCH(emac->prueth)) {
