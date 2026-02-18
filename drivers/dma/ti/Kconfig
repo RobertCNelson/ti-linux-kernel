@@ -49,6 +49,18 @@ config TI_K3_UDMA
 	  Enable support for the TI UDMA (Unified DMA) controller. This
 	  DMA engine is used in AM65x and j721e.
 
+config TI_K3_UDMA_V2
+	tristate "Texas Instruments K3 UDMA v2 support"
+	depends on ARCH_K3
+	select DMA_ENGINE
+	select DMA_VIRTUAL_CHANNELS
+	select TI_K3_UDMA_COMMON
+	select TI_K3_RINGACC
+	select TI_K3_PSIL
+        help
+	  Enable support for the TI UDMA (Unified DMA) v2 controller. This
+	  DMA engine is used in AM62L.
+
 config TI_K3_UDMA_COMMON
 	tristate
 	default n
@@ -63,7 +75,7 @@ config TI_K3_UDMA_GLUE_LAYER
 
 config TI_K3_PSIL
        tristate
-       default TI_K3_UDMA
+       default TI_K3_UDMA || TI_K3_UDMA_V2
 
 config TI_DMA_CROSSBAR
 	bool

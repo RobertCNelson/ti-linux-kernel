@@ -1810,6 +1810,7 @@ static struct dma_chan *udma_of_xlate(struct of_phandle_args *dma_spec,
 
 static struct udma_match_data am654_main_data = {
 	.type = DMA_TYPE_UDMA,
+	.version = K3_UDMA_V1,
 	.psil_base = 0x1000,
 	.enable_memcpy_support = true,
 	.statictr_z_mask = GENMASK(11, 0),
@@ -1822,6 +1823,7 @@ static struct udma_match_data am654_main_data = {
 
 static struct udma_match_data am654_mcu_data = {
 	.type = DMA_TYPE_UDMA,
+	.version = K3_UDMA_V1,
 	.psil_base = 0x6000,
 	.enable_memcpy_support = false,
 	.statictr_z_mask = GENMASK(11, 0),
@@ -1834,6 +1836,7 @@ static struct udma_match_data am654_mcu_data = {
 
 static struct udma_match_data j721e_main_data = {
 	.type = DMA_TYPE_UDMA,
+	.version = K3_UDMA_V1,
 	.psil_base = 0x1000,
 	.enable_memcpy_support = true,
 	.flags = UDMA_FLAGS_J7_CLASS,
@@ -1847,6 +1850,7 @@ static struct udma_match_data j721e_main_data = {
 
 static struct udma_match_data j721e_mcu_data = {
 	.type = DMA_TYPE_UDMA,
+	.version = K3_UDMA_V1,
 	.psil_base = 0x6000,
 	.enable_memcpy_support = false, /* MEM_TO_MEM is slow via MCU UDMA */
 	.flags = UDMA_FLAGS_J7_CLASS,
@@ -1876,6 +1880,7 @@ static struct udma_soc_data j721s2_bcdma_csi_soc_data = {
 
 static struct udma_match_data am62a_bcdma_csirx_data = {
 	.type = DMA_TYPE_BCDMA,
+	.version = K3_UDMA_V1,
 	.psil_base = 0x3100,
 	.enable_memcpy_support = false,
 	.burst_size = {
@@ -1888,6 +1893,7 @@ static struct udma_match_data am62a_bcdma_csirx_data = {
 
 static struct udma_match_data am64_bcdma_data = {
 	.type = DMA_TYPE_BCDMA,
+	.version = K3_UDMA_V1,
 	.psil_base = 0x2000, /* for tchan and rchan, not applicable to bchan */
 	.enable_memcpy_support = true, /* Supported via bchan */
 	.flags = UDMA_FLAGS_J7_CLASS,
@@ -1901,6 +1907,7 @@ static struct udma_match_data am64_bcdma_data = {
 
 static struct udma_match_data am64_pktdma_data = {
 	.type = DMA_TYPE_PKTDMA,
+	.version = K3_UDMA_V1,
 	.psil_base = 0x1000,
 	.enable_memcpy_support = false, /* PKTDMA does not support MEM_TO_MEM */
 	.flags = UDMA_FLAGS_J7_CLASS,
@@ -1914,6 +1921,7 @@ static struct udma_match_data am64_pktdma_data = {
 
 static struct udma_match_data j721s2_bcdma_csi_data = {
 	.type = DMA_TYPE_BCDMA,
+	.version = K3_UDMA_V1,
 	.psil_base = 0x2000,
 	.enable_memcpy_support = false,
 	.burst_size = {
@@ -1926,6 +1934,7 @@ static struct udma_match_data j721s2_bcdma_csi_data = {
 
 static struct udma_match_data j722s_bcdma_csi_data = {
 	.type = DMA_TYPE_BCDMA,
+	.version = K3_UDMA_V1,
 	.psil_base = 0x3100,
 	.enable_memcpy_support = false,
 	.burst_size = {
