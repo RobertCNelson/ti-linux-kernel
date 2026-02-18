@@ -190,16 +190,24 @@ enum pruss_device {
 	PRUSS_K2G
 };
 
+/* PRU firmware revision*/
+enum fw_revision {
+	FW_REV_V1_0 = 0,
+	FW_REV_V2_1
+};
+
 /**
  * struct prueth_private_data - PRU Ethernet private data
  * @driver_data: PRU Ethernet device name
  * @fw_pru: firmware names to be used for PRUSS ethernet usecases
  * @support_switch: boolean to indicate if switch is enabled
+ * @fw_rev: Firmware revision identifier
  */
 struct prueth_private_data {
 	enum pruss_device driver_data;
 	const struct prueth_firmware fw_pru[PRUSS_NUM_PRUS];
 	bool support_switch;
+	enum fw_revision fw_rev;
 };
 
 struct prueth_emac_stats {
@@ -460,6 +468,9 @@ int icssm_emac_add_del_vid(struct prueth_emac *emac,
 			   bool add, __be16 proto, u16 vid);
 irqreturn_t icssm_prueth_ptp_tx_irq_handle(int irq, void *dev);
 irqreturn_t icssm_prueth_ptp_tx_irq_work(int irq, void *dev);
+
+u64 icssm_iep_get_timestamp_cycles(struct icss_iep *iep,
+				   void __iomem *mem);
 
 void icssm_emac_update_hardware_stats(struct prueth_emac *emac);
 void icssm_emac_set_stats(struct prueth_emac *emac,
