@@ -11,6 +11,9 @@ ti-cpsw-priv-y += cpsw_priv.o cpsw_ethtool.o
 ti-cpsw-ale-y += cpsw_ale.o
 ti-cpsw-sl-y += cpsw_sl.o
 
+obj-$(CONFIG_TI_CPSW_PROXY_CLIENT) += ti-cpsw-proxy-client.o
+ti-cpsw-proxy-client-y := cpsw-proxy-client.o
+
 obj-$(CONFIG_TLAN) += tlan.o
 obj-$(CONFIG_TI_DAVINCI_EMAC) += davinci_emac.o ti-cpsw-common.o
 obj-$(CONFIG_TI_DAVINCI_MDIO) += davinci_mdio.o
