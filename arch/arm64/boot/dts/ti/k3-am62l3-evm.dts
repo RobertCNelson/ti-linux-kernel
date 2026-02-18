@@ -433,6 +433,7 @@
 
 &usb0 {
 	usb-role-switch;
+	bootph-all;
 
 	port {
 		usb0_hs_ep: endpoint {
