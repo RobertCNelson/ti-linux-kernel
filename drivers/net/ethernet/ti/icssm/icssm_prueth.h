@@ -458,10 +458,6 @@ int icssm_emac_add_del_vid(struct prueth_emac *emac,
 irqreturn_t icssm_prueth_ptp_tx_irq_handle(int irq, void *dev);
 irqreturn_t icssm_prueth_ptp_tx_irq_work(int irq, void *dev);
 
-void icssm_emac_mc_filter_bin_allow(struct prueth_emac *emac, u8 hash);
-void icssm_emac_mc_filter_bin_disallow(struct prueth_emac *emac, u8 hash);
-u8 icssm_emac_get_mc_hash(u8 *mac, u8 *mask);
-
 void icssm_emac_update_hardware_stats(struct prueth_emac *emac);
 void icssm_emac_set_stats(struct prueth_emac *emac,
 			  struct port_statistics *pstats);
