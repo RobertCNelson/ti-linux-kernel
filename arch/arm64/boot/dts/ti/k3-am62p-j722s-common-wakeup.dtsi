@@ -19,7 +19,21 @@
 		chipid: chipid@14 {
 			compatible = "ti,am654-chipid";
 			reg = <0x14 0x4>;
+			nvmem-cells = <&gpsw1>;
+			nvmem-cell-names = "gpsw1";
 			bootph-all;
+		};
+
+		gpsw_efuse: efuse@230 {
+			compatible = "socionext,uniphier-efuse";
+			reg = <0x230 0x10>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			bootph-all;
+
+			gpsw1: gpsw1@4 {
+				reg = <0x4 0x4>;
+			};
 		};
 
 		opp_efuse_table: syscon@18 {
