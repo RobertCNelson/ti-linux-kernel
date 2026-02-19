@@ -1664,6 +1664,7 @@ static int spinand_probe(struct spi_mem *mem)
 {
 	struct spinand_device *spinand;
 	struct mtd_info *mtd;
+	struct spi_mem_op read_op, write_op;
 	int ret;
 
 	spinand = devm_kzalloc(&mem->spi->dev, sizeof(*spinand),
@@ -1681,6 +1682,19 @@ static int spinand_probe(struct spi_mem *mem)
 	ret = spinand_init(spinand);
 	if (ret)
 		return ret;
+
+	read_op = *spinand->op_templates.read_cache;
+	write_op = *spinand->op_templates.write_cache;
+
+	ret = spi_mem_execute_tuning(mem, &read_op, &write_op);
+	if (ret && ret != -EOPNOTSUPP) {
+		dev_warn(&mem->spi->dev, "Failed to execute PHY tuning: %d\n",
+			 ret);
+		/*
+		 * Tuning failure is non-fatal; the controller falls back to
+		 * default timing, reducing speed but ensuring operation.
+		 */
+	}
 
 	ret = mtd_device_register(mtd, NULL, 0);
 	if (ret)
