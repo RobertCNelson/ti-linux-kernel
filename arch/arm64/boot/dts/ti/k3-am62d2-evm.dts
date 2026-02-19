@@ -76,12 +76,6 @@
 			reg = <0x00 0x9e800000 0x00 0x01800000>; /* for OP-TEE */
 			no-map;
 		};
-
-		rtos_ipc_memory_region: memory@a0000000 {
-			compatible = "shared-dma-pool";
-			reg = <0x00 0xa0000000 0x00 0x01000000>;
-			no-map;
-		};
 	};
 
 	opp-table {
