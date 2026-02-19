@@ -3863,7 +3863,6 @@ void sock_enable_timestamp(struct sock *sk, enum sock_flags flag)
 int sock_recv_errqueue(struct sock *sk, struct msghdr *msg, int len,
 		       int level, int type)
 {
-	struct sock_extended_err ee;
 	struct skb_redundant_info *sred;
 	struct sock_exterr_skb *serr;
 	struct sk_buff *skb;
