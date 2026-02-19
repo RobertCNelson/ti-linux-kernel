@@ -3694,6 +3694,7 @@ static int spi_nor_probe(struct spi_mem *spimem)
 	struct device *dev = &spi->dev;
 	struct flash_platform_data *data = dev_get_platdata(dev);
 	struct spi_nor *nor;
+	struct spi_mem_op read_op;
 	/*
 	 * Enable all caps by default. The core will mask them after
 	 * checking what's really supported using spi_mem_supports_op().
@@ -3762,6 +3763,16 @@ static int spi_nor_probe(struct spi_mem *spimem)
 	ret = spi_nor_create_write_dirmap(nor);
 	if (ret)
 		return ret;
+
+	read_op = spi_nor_spimem_get_read_op(nor);
+	ret = spi_mem_execute_tuning(spimem, &read_op, NULL);
+	if (ret && ret != -EOPNOTSUPP) {
+		dev_warn(dev, "Failed to execute PHY tuning: %d\n", ret);
+		/*
+		 * Tuning failure is non-fatal; the controller falls back to
+		 * default timing, reducing speed but ensuring operation.
+		 */
+	}
 
 	return mtd_device_register(&nor->mtd, data ? data->parts : NULL,
 				   data ? data->nr_parts : 0);
