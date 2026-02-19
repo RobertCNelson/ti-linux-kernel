@@ -1625,13 +1625,44 @@ static ssize_t cqspi_read(struct cqspi_flash_pdata *f_pdata,
 	return cqspi_indirect_read_execute(f_pdata, buf, from, len);
 }
 
+/*
+ * Check if operation exactly matches the tuned operations.
+ */
+static bool cqspi_op_matches_tuned(const struct spi_mem_op *op,
+				   const struct spi_mem_op *tuned_op)
+{
+	return op->cmd.opcode == tuned_op->cmd.opcode &&
+	       op->cmd.buswidth == tuned_op->cmd.buswidth &&
+	       op->cmd.dtr == tuned_op->cmd.dtr &&
+	       op->addr.buswidth == tuned_op->addr.buswidth &&
+	       op->addr.dtr == tuned_op->addr.dtr &&
+	       op->data.buswidth == tuned_op->data.buswidth &&
+	       op->data.dtr == tuned_op->data.dtr;
+}
+
 static int cqspi_mem_process(struct spi_mem *mem, const struct spi_mem_op *op)
 {
 	struct cqspi_st *cqspi = spi_controller_get_devdata(mem->spi->controller);
 	struct cqspi_flash_pdata *f_pdata;
 
 	f_pdata = &cqspi->f_pdata[spi_get_chipselect(mem->spi, 0)];
-	cqspi_configure(f_pdata, op->max_freq);
+
+	/*
+	 * PHY tuning allows high-frequency operation only for calibrated
+	 * commands. Uncalibrated operations use safe non-PHY frequency to
+	 * avoid timing violations.
+	 */
+	if (cqspi->ddata->execute_tuning && f_pdata->use_phy &&
+	    (cqspi_op_matches_tuned(op, &f_pdata->phy_read_op) ||
+	     cqspi_op_matches_tuned(op, &f_pdata->phy_write_op))) {
+		cqspi_configure(f_pdata, op->max_freq);
+	} else if (cqspi->ddata->execute_tuning) {
+		/* Use safe frequency for untuned operations */
+		cqspi_configure(f_pdata, f_pdata->non_phy_clk_rate);
+	} else {
+		/* No tuning support, always use requested frequency */
+		cqspi_configure(f_pdata, op->max_freq);
+	}
 
 	if (op->data.dir == SPI_MEM_DATA_IN && op->data.buf.in) {
 	/*
