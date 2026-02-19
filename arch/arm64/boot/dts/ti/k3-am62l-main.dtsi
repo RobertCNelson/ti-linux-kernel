@@ -784,7 +784,7 @@
 		reg-names = "common", "vidl1", "ovr1", "vp1", "common1";
 		power-domains = <&scmi_pds 39>;
 		clocks = <&scmi_clk 162>,
-			 <&scmi_clk 159>;
+			 <&scmi_clk 161>;
 		clock-names = "fck", "vp1";
 		interrupts = <GIC_SPI 60 IRQ_TYPE_LEVEL_HIGH>;
 		status = "disabled";
@@ -798,12 +798,12 @@
 	dphy_tx0: phy@301c0000 {
 		compatible = "ti,j721e-dphy";
 		reg = <0x0 0x301c0000 0x0 0x1000>;
-		clocks = <&scmi_clk 348>, <&scmi_clk 341>;
+		clocks = <&scmi_clk 348>, <&scmi_clk 343>;
 		clock-names = "psm", "pll_ref";
 		#phy-cells = <0>;
 		power-domains = <&scmi_pds 86>;
-		assigned-clocks = <&scmi_clk 341>;
-		assigned-clock-parents = <&scmi_clk 0>;
+		assigned-clocks = <&scmi_clk 343>;
+		assigned-clock-parents = <&scmi_clk 341>;
 		assigned-clock-rates = <25000000>;
 		status = "disabled";
 	};
