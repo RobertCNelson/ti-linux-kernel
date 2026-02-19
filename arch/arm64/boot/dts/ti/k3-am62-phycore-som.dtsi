@@ -46,12 +46,6 @@
 			pmsg-size = <0x8000>;
 		};
 
-		rtos_ipc_memory_region: memory@9c800000 {
-			compatible = "shared-dma-pool";
-			reg = <0x00 0x9c800000 0x00 0x00300000>;
-			no-map;
-		};
-
 		wkup_r5fss0_core0_dma_memory_region: memory@9da00000 {
 			compatible = "shared-dma-pool";
 			reg = <0x00 0x9da00000 0x00 0x100000>;
