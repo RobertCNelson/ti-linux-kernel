@@ -61,6 +61,10 @@ config PCI_J721E_HOST
 	depends on ARCH_K3 || COMPILE_TEST
 	depends on OF
 	select PCI_J721E
+	imply NTB
+	imply NTB_TRANSPORT
+	imply NTB_EPF
+	imply NTB_NETDEV
 	help
 	  Say Y here if you want to support the TI J721E PCIe platform
 	  controller in host mode. TI J721E PCIe controller uses Cadence PCIe
@@ -72,6 +76,7 @@ config PCI_J721E_EP
 	depends on OF
 	depends on PCI_ENDPOINT
 	select PCI_J721E
+	imply PCI_EPF_NTB
 	help
 	  Say Y here if you want to support the TI J721E PCIe platform
 	  controller in endpoint mode. TI J721E PCIe controller uses Cadence PCIe
