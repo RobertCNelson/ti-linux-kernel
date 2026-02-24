@@ -145,6 +145,7 @@ k3-j7200-evm-dtbs := k3-j7200-common-proc-board.dtb k3-j7200-evm-quad-port-eth-e
 dtb-$(CONFIG_ARCH_K3) += k3-j7200-evm.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-j7200-evm-ethfw.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j7200-evm-pcie1-ep.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-j7200-evm-mcspi-loopback.dtbo
 
 # Boards with J721e SoC
 k3-j721e-evm-dtbs := k3-j721e-common-proc-board.dtb k3-j721e-evm-quad-port-eth-exp.dtbo
@@ -286,12 +287,16 @@ k3-am69-sk-pcie0-ep-dtbs := k3-am69-sk.dtb \
 	k3-am69-sk-pcie0-ep.dtbo
 k3-j7200-evm-ethfw-dtbs := k3-j7200-common-proc-board.dtb \
 	k3-j7200-evm-ethfw.dtbo
+k3-j7200-evm-mcspi-loopback-dtbs := k3-j7200-common-proc-board.dtb \
+	k3-j7200-evm-mcspi-loopback.dtbo
 k3-j7200-evm-pcie1-ep-dtbs := k3-j7200-common-proc-board.dtb \
 	k3-j7200-evm-pcie1-ep.dtbo
 k3-j721e-common-proc-board-infotainment-dtbs := k3-j721e-common-proc-board.dtb \
 	k3-j721e-common-proc-board-infotainment.dtbo
 k3-j721e-evm-ethfw-dtbs := k3-j721e-common-proc-board.dtb \
 	k3-j721e-evm-ethfw.dtbo
+k3-j721e-evm-mcspi-loopback-dtbs := k3-j721e-common-proc-board.dtb \
+	k3-j7200-evm-mcspi-loopback.dtbo
 k3-j721e-evm-pcie0-ep-dtbs := k3-j721e-common-proc-board.dtb \
 	k3-j721e-evm-pcie0-ep.dtbo
 k3-j721e-evm-pcie1-ep-dtbs := k3-j721e-common-proc-board.dtb \
@@ -300,6 +305,8 @@ k3-j721e-sk-csi2-dual-imx219-dtbs := k3-j721e-sk.dtb \
 	k3-j721e-sk-csi2-dual-imx219.dtbo
 k3-j721s2-evm-pcie1-ep-dtbs := k3-j721s2-common-proc-board.dtb \
 	k3-j721s2-evm-pcie1-ep.dtbo
+k3-j721s2-evm-mcspi-loopback-dtbs := k3-j721s2-common-proc-board.dtb \
+	k3-j7200-evm-mcspi-loopback.dtbo
 k3-j721s2-evm-usb0-type-a-dtbs := k3-j721s2-common-proc-board.dtb \
 	k3-j721s2-evm-usb0-type-a.dtbo
 k3-j721s2-evm-audio-dtbs := k3-j721s2-common-proc-board.dtb \
@@ -310,6 +317,10 @@ k3-j722s-evm-csi2-quad-tevi-ov5640-dtbs := k3-j722s-evm.dtb \
 	k3-j722s-evm-csi2-quad-tevi-ov5640.dtbo
 k3-j742s2-evm-ethfw-dtbs := k3-j742s2-evm.dtb \
 	k3-j742s2-evm-ethfw.dtbo
+k3-j742s2-evm-mcspi-loopback-dtbs := k3-j742s2-evm.dtb \
+	k3-j7200-evm-mcspi-loopback.dtbo
+k3-j784s4-evm-mcspi-loopback-dtbs := k3-j784s4-evm.dtb \
+	k3-j7200-evm-mcspi-loopback.dtbo
 k3-j742s2-evm-usb0-type-a-dtbs := k3-j742s2-evm.dtb \
 	k3-j784s4-j742s2-evm-usb0-type-a.dtbo
 k3-j784s4-evm-ethfw-dtbs := k3-j784s4-evm.dtb \
@@ -361,20 +372,25 @@ dtb- += k3-am625-beagleplay-csi2-ov5640.dtb \
 	k3-am69-sk-csi2-dual-imx219.dtb \
 	k3-am69-sk-pcie0-ep.dtb \
 	k3-j7200-evm-ethfw.dtb \
+	k3-j7200-evm-mcspi-loopback.dtb \
 	k3-j7200-evm-pcie1-ep.dtb \
 	k3-j721e-common-proc-board-infotainment.dtb \
 	k3-j721e-evm-ethfw.dtb \
+	k3-j721e-evm-mcspi-loopback.dtb \
 	k3-j721e-evm-pcie0-ep.dtb \
 	k3-j721e-evm-pcie1-ep.dtb \
 	k3-j721e-sk-csi2-dual-imx219.dtb \
 	k3-j721s2-evm-pcie1-ep.dtb \
+	k3-j721s2-evm-mcspi-loopback.dtb \
 	k3-j721s2-evm-usb0-type-a.dtb \
 	k3-j721s2-evm-audio.dtb \
 	k3-j722s-evm-csi2-quad-rpi-cam-imx219.dtb \
 	k3-j722s-evm-csi2-quad-tevi-ov5640.dtb \
 	k3-j742s2-evm-ethfw.dtb \
 	k3-j742s2-evm-usb0-type-a.dtb \
+	k3-j742s2-evm-mcspi-loopback.dtb \
 	k3-j784s4-evm-ethfw.dtb \
+	k3-j784s4-evm-mcspi-loopback.dtb \
 	k3-j784s4-evm-pcie0-pcie1-ep.dtb \
 	k3-j784s4-evm-quad-port-eth-exp1.dtb \
 	k3-j784s4-evm-usb0-type-a.dtb \
