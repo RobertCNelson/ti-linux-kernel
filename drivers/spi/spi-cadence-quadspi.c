@@ -3654,7 +3654,7 @@ static int cqspi_request_mmap_dma(struct cqspi_st *cqspi)
 
 	cqspi->rx_chan = dma_request_chan_by_mask(&mask);
 	if (IS_ERR(cqspi->rx_chan)) {
-		int ret = PTR_ERR(cqspi->rx_chan);
+		int ret = (-EPROBE_DEFER);
 
 		cqspi->rx_chan = NULL;
 		if (ret == -ENODEV) {
