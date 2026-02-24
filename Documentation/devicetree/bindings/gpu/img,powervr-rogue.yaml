@@ -31,7 +31,11 @@ properties:
               - ti,j721s2-gpu
           - const: img,img-bxs-4-64
           - const: img,img-rogue
-
+      - items:
+          - enum:
+              - ti,j721e-gpu
+          - const: img,img-ge8430
+          - const: img,img-rogue
       # This legacy combination of compatible strings was introduced early on
       # before the more specific GPU identifiers were used.
       - items:
@@ -141,6 +145,7 @@ allOf:
             enum:
               - ti,am62-gpu
               - ti,j721s2-gpu
+              - ti,j721e-gpu
     then:
       properties:
         clocks:
