@@ -6,6 +6,7 @@
 #ifndef AM65_CPSW_NUSS_H_
 #define AM65_CPSW_NUSS_H_
 
+#include <linux/debugfs.h>
 #include <linux/if_ether.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -62,6 +63,9 @@ struct am65_cpsw_port {
 	enum hwtstamp_rx_filters	rx_ts_filter;
 	struct am65_cpsw_qos		qos;
 	struct devlink_port		devlink_port;
+#if IS_ENABLED(CONFIG_DEBUG_FS)
+	struct dentry			*debugfs_port;
+#endif
 	struct bpf_prog			*xdp_prog;
 	struct xdp_rxq_info		xdp_rxq[AM65_CPSW_MAX_QUEUES];
 	/* Only for suspend resume context */
@@ -207,6 +211,10 @@ struct am65_cpsw_common {
 	struct net_device *hw_bridge_dev;
 	struct notifier_block am65_cpsw_netdevice_nb;
 	unsigned char switch_id[MAX_PHYS_ITEM_ID_LEN];
+
+#if IS_ENABLED(CONFIG_DEBUG_FS)
+	struct dentry		*debugfs_root;
+#endif
 	/* only for suspend/resume context restore */
 	u32			*ale_context;
 	/* XDP Zero Copy */
@@ -262,5 +270,24 @@ static inline bool am65_cpsw_xdp_is_enabled(struct am65_cpsw_port *port)
 }
 struct xsk_buff_pool *am65_cpsw_xsk_get_pool(struct am65_cpsw_port *port,
 					     u32 qid);
+
+#if IS_ENABLED(CONFIG_DEBUG_FS)
+int am65_cpsw_nuss_register_port_debugfs(struct am65_cpsw_port *port);
+int am65_cpsw_nuss_register_debugfs(struct am65_cpsw_common *common);
+void am65_cpsw_nuss_unregister_debugfs(struct am65_cpsw_common *common);
+#else
+static inline int am65_cpsw_nuss_register_port_debugfs(struct am65_cpsw_port *port)
+{
+	return 0;
+}
+
+static inline int am65_cpsw_nuss_register_debugfs(struct am65_cpsw_common *common)
+{
+	return 0;
+}
+
+static inline void am65_cpsw_nuss_unregister_debugfs(struct am65_cpsw_common *common)
+{ }
+#endif /* CONFIG_DEBUG_FS */
 
 #endif /* AM65_CPSW_NUSS_H_ */
