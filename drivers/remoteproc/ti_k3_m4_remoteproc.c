@@ -110,6 +110,11 @@ static int k3_m4_rproc_probe(struct platform_device *pdev)
 	if (p_state) {
 		rproc->state = RPROC_DETACHED;
 		dev_info(dev, "configured M4F for IPC-only mode\n");
+		/* override rproc ops with only required IPC-only mode ops */
+		kproc->rproc->ops->prepare = NULL;
+		kproc->rproc->ops->unprepare = NULL;
+		kproc->rproc->ops->start = NULL;
+		kproc->rproc->ops->stop = NULL;
 	} else {
 		dev_info(dev, "configured M4F for remoteproc mode\n");
 	}
