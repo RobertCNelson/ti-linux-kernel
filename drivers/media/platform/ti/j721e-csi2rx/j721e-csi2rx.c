@@ -1328,7 +1328,7 @@ static int ti_csi2rx_init_vb2q(struct ti_csi2rx_ctx *ctx)
 	q->ops = &csi_vb2_qops;
 	q->mem_ops = &vb2_dma_contig_memops;
 	q->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
-	q->dev = ctx->csi->dev;
+	q->dev = dmaengine_get_dma_device(ctx->dma.chan);
 	q->lock = &ctx->mutex;
 	q->min_queued_buffers = 1;
 	q->allow_cache_hints = 1;
@@ -1541,6 +1541,10 @@ static int ti_csi2rx_init_ctx(struct ti_csi2rx_ctx *ctx)
 	INIT_LIST_HEAD(&ctx->dma.submitted);
 	spin_lock_init(&ctx->dma.lock);
 	ctx->dma.state = TI_CSI2RX_DMA_STOPPED;
+
+	ret = ti_csi2rx_init_dma(ctx);
+	if (ret)
+		return ret;
 
 	ret = ti_csi2rx_init_vb2q(ctx);
 	if (ret)
@@ -1755,6 +1759,7 @@ static int ti_csi2rx_probe(struct platform_device *pdev)
 			goto err_ctx;
 	}
 
+	pm_runtime_set_active(csi->dev);
 	pm_runtime_enable(csi->dev);
 
 	ret = ti_csi2rx_notifier_register(csi);
