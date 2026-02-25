@@ -59,4 +59,19 @@ config MUX_MMIO
 	  To compile the driver as a module, choose M here: the module will
 	  be called mux-mmio.
 
+config MUX_TI_K3_EVENT_ROUTER
+	tristate "TI Event Mux Router using MMIO registers"
+	depends on OF && (REGMAP_MMIO || COMPILE_TEST)
+	help
+	  This is extension of MMIO mux for  timesync router and gpiomux
+	  routers on TI K3 SoCs. This driver supports the 3-field format for
+	  mux control: <register-offset mask value>.
+
+	  The driver allows configuration of hardware mux routers using
+	  memory-mapped registers. It's based on the mmio-mux driver but
+	  supports the extended 3-field format for more precise control.
+
+	  To compile the driver as a module, choose M here: the module will
+	  be called mux-ti-k3-event.
+
 endmenu
