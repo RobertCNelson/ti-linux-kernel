@@ -66,6 +66,7 @@ dtb-$(CONFIG_ARCH_K3) += k3-am62p5-verdin-wifi-dev.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-am62p5-verdin-wifi-ivy.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-am62p5-verdin-wifi-mallow.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-am62p5-verdin-wifi-yavia.dtb
+dtb-$(CONFIG_ARCH_K3) += k3-am62p5-sk-m2-cc3351.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62p5-sk-microtips-mf101hie-panel.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62p5-sk-microtips-mf103hie-lcd2.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62p5-sk-dsi-rpi-7inch-panel.dtbo
