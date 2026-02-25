@@ -700,3 +700,8 @@
 &wkup_uart0_interconnect {
 	status = "okay";
 };
+
+&main_event_mux_router {
+	mux-reg-mask-val = <0x40 0x000ff 0x00028>;
+	idle-states = <0x1>;
+};
