@@ -783,7 +783,7 @@ static int ti_k3_rtc_analog_config(struct device *dev, struct ti_k3_rtc *priv)
 		dev_err(dev, "Fence sync Failed (%d)!\n", ret);
 		return ret;
 	}
-	dev_err(dev, "Configured RTC !\n");
+	dev_dbg(dev, "Configured RTC!\n");
 
 	return 0;
 }
