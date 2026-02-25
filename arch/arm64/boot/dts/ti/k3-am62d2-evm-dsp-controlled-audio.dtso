@@ -1,0 +1,43 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * DT Overlay to reserve audio components on AM62D2-EVM.
+ *
+ * Reserve:
+ * - mcasp2 audio interface.
+ * - All TAD5x1x DACs (J3A, J3B, J4A, J4B).
+ * - Both PCM6240 ADC instances.
+ * - Sound card (codec_audio).
+ *
+ * Copyright (C) 2026 Texas Instruments Incorporated - https://www.ti.com/
+ */
+
+/dts-v1/;
+/plugin/;
+
+&codec_audio {
+	status = "reserved";
+};
+
+&mcasp2 {
+	status = "reserved";
+};
+
+&tad5x1x_50 {
+	status = "reserved";
+};
+
+&tad5x1x_51 {
+	status = "reserved";
+};
+
+&tad5x1x_52 {
+	status = "reserved";
+};
+
+&tad5x1x_53 {
+	status = "reserved";
+};
+
+&pcm6240 {
+	status = "reserved";
+};
