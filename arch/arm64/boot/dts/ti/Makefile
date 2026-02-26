@@ -380,6 +380,10 @@ dtb- += k3-am625-beagleplay-csi2-ov5640.dtb \
 	k3-am62l3-evm-tida-010939.dtb
 
 # FPDLink Sensors
+dtb-$(CONFIG_ARCH_K3) += k3-fpdlink-ov2312-0-0.dtbo \
+			 k3-fpdlink-ov2312-0-1.dtbo \
+			 k3-fpdlink-ov2312-0-2.dtbo \
+			 k3-fpdlink-ov2312-0-3.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-v3link-imx219-0-0.dtbo \
 			 k3-v3link-imx219-0-1.dtbo \
 			 k3-v3link-imx219-0-2.dtbo \
