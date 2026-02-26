@@ -268,22 +268,32 @@ struct udma_desc *udma_alloc_tr_desc(struct udma_chan *uc,
 
 /**
  * udma_get_tr_counters - calculate TR counters for a given length
- * @len: Length of the transfer
+ * @uc: udma chan
+ * @len: Length of the trasnfer
  * @align_to: Preferred alignment
  * @tr0_cnt0: First TR icnt0
  * @tr0_cnt1: First TR icnt1
  * @tr1_cnt0: Second (if used) TR icnt0
  *
  * For len < SZ_64K only one TR is enough, tr1_cnt0 is not updated
- * For len >= SZ_64K two TRs are used in a simple way:
- * First TR: SZ_64K-alignment blocks (tr0_cnt0, tr0_cnt1)
- * Second TR: the remaining length (tr1_cnt0)
+ *
+ * For len >= SZ_64K && cyclic == false:
+ *	First TR: SZ_64K-alignment blocks (tr0_cnt0, tr0_cnt1)
+ *	Second TR: the remaining length (tr1_cnt0)
+ *
+ * For len >= SZ_64K && cyclic == true:
+ *	Transfer is split into 2 equal sized TRs.
+ *
+ * Limits: In case of cyclic mode, the maximum supported length is
+ * (SZ_128K - 2) = 131070 bytes, because the split logic relies on fitting
+ * half the length into a 16-bit counter.
  *
  * Returns the number of TRs the length needs (1 or 2)
  * -EINVAL if the length can not be supported
  */
-int udma_get_tr_counters(size_t len, unsigned long align_to,
-			 u16 *tr0_cnt0, u16 *tr0_cnt1, u16 *tr1_cnt0)
+int udma_get_tr_counters(struct udma_chan *uc, size_t len,
+			 unsigned long align_to, u16 *tr0_cnt0, u16 *tr0_cnt1,
+			 u16 *tr1_cnt0)
 {
 	if (len < SZ_64K) {
 		*tr0_cnt0 = len;
@@ -292,6 +302,41 @@ int udma_get_tr_counters(size_t len, unsigned long align_to,
 		return 1;
 	}
 
+	if (uc->config.ep_type != PSIL_EP_NATIVE && uc->cyclic) {
+		u32 dev_width, elcnt;
+
+		if (uc->config.dir == DMA_DEV_TO_MEM) {
+			dev_width = uc->cfg.src_addr_width;
+			elcnt = uc->cfg.src_maxburst ? uc->cfg.src_maxburst : 1;
+		} else if (uc->config.dir == DMA_MEM_TO_DEV) {
+			dev_width = uc->cfg.dst_addr_width;
+			elcnt = uc->cfg.dst_maxburst ? uc->cfg.dst_maxburst : 1;
+		} else {
+			return -EINVAL;
+		}
+
+		/*
+		 * In case of cyclic mode:
+		 * For transfers >= 64K, we must use equal-sized TRs and
+		 * the icnt0 should be divisible by dev_width and the maxburst.
+		 * This is required for the static x, y and `bstcnt` logic in
+		 * `udma_configure_statictr` to be valid.
+		 * And transfers >= 131070 bytes (128K - 2) requires more than 2
+		 * TRs in case of cyclic mode. and the current logic doesn't
+		 * support it.
+		 */
+		if ((len % (2 * dev_width * elcnt) != 0) ||
+		    (len > SZ_128K - 2))
+			return -EINVAL;
+
+		*tr0_cnt0 = len / 2;
+		*tr0_cnt1 = 1;
+		*tr1_cnt0 = len - *tr0_cnt0;
+
+		return 2;
+	}
+
+	/* Non cyclic mode or PSIL_EP_NATIVE*/
 	if (align_to > 3)
 		align_to = 3;
 
@@ -357,7 +402,7 @@ udma_prep_slave_sg_tr(struct udma_chan *uc, struct scatterlist *sgl,
 	for_each_sg(sgl, sgent, sglen, i) {
 		dma_addr_t sg_addr = sg_dma_address(sgent);
 
-		num_tr = udma_get_tr_counters(sg_dma_len(sgent), __ffs(sg_addr),
+		num_tr = udma_get_tr_counters(uc, sg_dma_len(sgent), __ffs(sg_addr),
 					      &tr0_cnt0, &tr0_cnt1, &tr1_cnt0);
 		if (num_tr < 0) {
 			dev_err(uc->ud->dev, "size %u is not supported\n",
@@ -493,7 +538,7 @@ udma_prep_slave_sg_triggered_tr(struct udma_chan *uc, struct scatterlist *sgl,
 		dma_addr_t sg_addr = sg_dma_address(sgent);
 
 		sg_len = sg_dma_len(sgent);
-		num_tr = udma_get_tr_counters(sg_len / trigger_size, 0,
+		num_tr = udma_get_tr_counters(uc, sg_len / trigger_size, 0,
 					      &tr0_cnt2, &tr0_cnt3, &tr1_cnt2);
 		if (num_tr < 0) {
 			dev_err(uc->ud->dev, "size %zu is not supported\n",
@@ -932,11 +977,10 @@ udma_prep_dma_cyclic_tr(struct udma_chan *uc, dma_addr_t buf_addr,
 	int num_tr;
 	u32 period_csf = 0;
 
-	num_tr = udma_get_tr_counters(period_len, __ffs(buf_addr), &tr0_cnt0,
+	num_tr = udma_get_tr_counters(uc, period_len, __ffs(buf_addr), &tr0_cnt0,
 				      &tr0_cnt1, &tr1_cnt0);
 	if (num_tr < 0) {
-		dev_err(uc->ud->dev, "size %zu is not supported\n",
-			period_len);
+		dev_err(uc->ud->dev, "size %zu is not supported\n", period_len);
 		return NULL;
 	}
 
@@ -967,6 +1011,9 @@ udma_prep_dma_cyclic_tr(struct udma_chan *uc, dma_addr_t buf_addr,
 		period_csf = CPPI5_TR_CSF_EOP;
 	}
 
+	if (!(flags & DMA_PREP_INTERRUPT))
+		period_csf |= CPPI5_TR_CSF_SUPR_EVT;
+
 	for (i = 0; i < periods; i++) {
 		int tr_idx = i * num_tr;
 
@@ -978,9 +1025,10 @@ udma_prep_dma_cyclic_tr(struct udma_chan *uc, dma_addr_t buf_addr,
 		tr_req[tr_idx].icnt1 = tr0_cnt1;
 		tr_req[tr_idx].dim1 = tr0_cnt0;
 
+		if (period_csf)
+			cppi5_tr_csf_set(&tr_req[tr_idx].flags, period_csf);
+
 		if (num_tr == 2) {
-			cppi5_tr_csf_set(&tr_req[tr_idx].flags,
-					 CPPI5_TR_CSF_SUPR_EVT);
 			tr_idx++;
 
 			cppi5_tr_init(&tr_req[tr_idx].flags, CPPI5_TR_TYPE1,
@@ -991,13 +1039,10 @@ udma_prep_dma_cyclic_tr(struct udma_chan *uc, dma_addr_t buf_addr,
 			tr_req[tr_idx].icnt0 = tr1_cnt0;
 			tr_req[tr_idx].icnt1 = 1;
 			tr_req[tr_idx].dim1 = tr1_cnt0;
+
+			if (period_csf)
+				cppi5_tr_csf_set(&tr_req[tr_idx].flags, period_csf);
 		}
-
-		if (!(flags & DMA_PREP_INTERRUPT))
-			period_csf |= CPPI5_TR_CSF_SUPR_EVT;
-
-		if (period_csf)
-			cppi5_tr_csf_set(&tr_req[tr_idx].flags, period_csf);
 
 		period_addr += period_len;
 	}
@@ -1163,7 +1208,7 @@ udma_prep_dma_memcpy(struct dma_chan *chan, dma_addr_t dest, dma_addr_t src,
 		return NULL;
 	}
 
-	num_tr = udma_get_tr_counters(len, __ffs(src | dest), &tr0_cnt0,
+	num_tr = udma_get_tr_counters(uc, len, __ffs(src | dest), &tr0_cnt0,
 				      &tr0_cnt1, &tr1_cnt0);
 	if (num_tr < 0) {
 		dev_err(uc->ud->dev, "size %zu is not supported\n",
