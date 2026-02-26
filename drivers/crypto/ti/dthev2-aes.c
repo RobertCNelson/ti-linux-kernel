@@ -1198,7 +1198,7 @@ static struct skcipher_engine_alg cipher_algs[] = {
 		.base.base = {
 			.cra_name		= "ecb(aes)",
 			.cra_driver_name	= "ecb-aes-dthev2",
-			.cra_priority		= 299,
+			.cra_priority		= 400,
 			.cra_flags		= CRYPTO_ALG_TYPE_SKCIPHER |
 						  CRYPTO_ALG_ASYNC |
 						  CRYPTO_ALG_KERN_DRIVER_ONLY,
@@ -1221,7 +1221,7 @@ static struct skcipher_engine_alg cipher_algs[] = {
 		.base.base = {
 			.cra_name		= "cbc(aes)",
 			.cra_driver_name	= "cbc-aes-dthev2",
-			.cra_priority		= 299,
+			.cra_priority		= 400,
 			.cra_flags		= CRYPTO_ALG_TYPE_SKCIPHER |
 						  CRYPTO_ALG_ASYNC |
 						  CRYPTO_ALG_KERN_DRIVER_ONLY,
@@ -1246,7 +1246,7 @@ static struct skcipher_engine_alg cipher_algs[] = {
 		.base.base = {
 			.cra_name		= "ctr(aes)",
 			.cra_driver_name	= "ctr-aes-dthev2",
-			.cra_priority		= 299,
+			.cra_priority		= 400,
 			.cra_flags		= CRYPTO_ALG_TYPE_SKCIPHER |
 						  CRYPTO_ALG_ASYNC |
 						  CRYPTO_ALG_KERN_DRIVER_ONLY |
@@ -1270,7 +1270,7 @@ static struct skcipher_engine_alg cipher_algs[] = {
 		.base.base = {
 			.cra_name		= "xts(aes)",
 			.cra_driver_name	= "xts-aes-dthev2",
-			.cra_priority		= 299,
+			.cra_priority		= 400,
 			.cra_flags		= CRYPTO_ALG_TYPE_SKCIPHER |
 						  CRYPTO_ALG_ASYNC |
 						  CRYPTO_ALG_KERN_DRIVER_ONLY |
@@ -1299,7 +1299,7 @@ static struct aead_engine_alg aead_algs[] = {
 		.base.base = {
 			.cra_name		= "gcm(aes)",
 			.cra_driver_name	= "gcm-aes-dthev2",
-			.cra_priority		= 299,
+			.cra_priority		= 400,
 			.cra_flags		= CRYPTO_ALG_TYPE_AEAD |
 						  CRYPTO_ALG_KERN_DRIVER_ONLY |
 						  CRYPTO_ALG_ASYNC |
@@ -1324,7 +1324,7 @@ static struct aead_engine_alg aead_algs[] = {
 		.base.base = {
 			.cra_name		= "ccm(aes)",
 			.cra_driver_name	= "ccm-aes-dthev2",
-			.cra_priority		= 299,
+			.cra_priority		= 400,
 			.cra_flags		= CRYPTO_ALG_TYPE_AEAD |
 						  CRYPTO_ALG_KERN_DRIVER_ONLY |
 						  CRYPTO_ALG_ASYNC |
