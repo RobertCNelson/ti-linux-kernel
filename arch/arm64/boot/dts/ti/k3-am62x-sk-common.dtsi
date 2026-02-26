@@ -581,6 +581,14 @@
 	status = "reserved";
 };
 
+&main_bcdma {
+	bootph-all;
+};
+
+&main_pktdma {
+	bootph-all;
+};
+
 &ospi0 {
 	bootph-all;
 	status = "okay";

@@ -681,6 +681,14 @@
 	bootph-all;
 };
 
+&main_bcdma {
+	bootph-all;
+};
+
+&main_pktdma {
+	bootph-all;
+};
+
 &dss_ports {
 	/* VP1: DPI Output */
 	port@0 {
