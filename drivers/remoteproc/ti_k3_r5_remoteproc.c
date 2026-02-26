@@ -18,10 +18,12 @@
 #include <linux/of_platform.h>
 #include <linux/omap-mailbox.h>
 #include <linux/platform_device.h>
+#include <linux/pm_qos.h>
 #include <linux/pm_runtime.h>
 #include <linux/remoteproc.h>
 #include <linux/reset.h>
 #include <linux/slab.h>
+#include <linux/suspend.h>
 
 #include "omap_remoteproc.h"
 #include "remoteproc_internal.h"
@@ -530,6 +532,7 @@ static int k3_r5_rproc_stop(struct rproc *rproc)
 {
 	struct k3_rproc *kproc = rproc->priv;
 	struct k3_r5_core *core = kproc->priv;
+	struct device *dev = kproc->dev;
 	struct k3_r5_cluster *cluster = core->cluster;
 	int ret;
 
@@ -547,6 +550,11 @@ static int k3_r5_rproc_stop(struct rproc *rproc)
 			}
 		}
 	} else {
+		if (kproc->rproc->state == RPROC_SUSPENDED) {
+			dev_err(dev, "We can't stop in suspended state!!!!\n");
+			return 0;
+		}
+
 		ret = k3_r5_core_halt(core->kproc);
 		if (ret)
 			goto out;
@@ -557,7 +565,7 @@ static int k3_r5_rproc_stop(struct rproc *rproc)
 unroll_core_halt:
 	list_for_each_entry_from_reverse(core, &cluster->cores, elem) {
 		if (k3_r5_core_run(core->kproc))
-			dev_warn(core->dev, "core run back failed\n");
+			dev_warn(dev, "core run back failed\n");
 	}
 out:
 	return ret;
@@ -897,6 +905,10 @@ static int k3_r5_rproc_configure_mode(struct k3_rproc *kproc)
 						k3_get_loaded_rsc_table;
 	} else if (!c_state) {
 		dev_info(cdev, "configured R5F for remoteproc mode\n");
+		/* add support for suspend/resume */
+		kproc->pm_notifier.notifier_call = k3_rproc_pm_notifier_call;
+		register_pm_notifier(&kproc->pm_notifier);
+		kproc->late_pm = true;
 		ret = 0;
 	} else {
 		dev_err(cdev, "mismatched mode: local_reset = %s, module_reset = %s, core_state = %s\n",
@@ -1134,6 +1146,7 @@ static int k3_r5_cluster_rproc_init(struct platform_device *pdev)
 		}
 
 		init_completion(&kproc->shutdown_complete);
+		init_completion(&kproc->suspend_comp);
 init_rmem:
 		k3_r5_adjust_tcm_sizes(kproc);
 
@@ -1338,6 +1351,28 @@ fail:
 	return ret;
 }
 
+static int k3_r5_suspend_late(struct device *dev)
+{
+	struct k3_r5_cluster *cluster = dev_get_drvdata(dev);
+	struct k3_r5_core *core;
+	int ret = 0;
+
+	list_for_each_entry_reverse(core, &cluster->cores, elem) {
+		struct k3_rproc *kproc;
+
+		kproc = core->kproc;
+
+		/* Check if late resume/pm is supported */
+		if (kproc->late_pm) {
+			ret = k3_rproc_suspend(kproc->rproc);
+			if (ret)
+				return ret;
+		}
+	}
+
+	return 0;
+}
+
 static int k3_r5_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -1479,10 +1514,15 @@ static const struct of_device_id k3_r5_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, k3_r5_of_match);
 
+static const struct dev_pm_ops k3_r5_pm_ops = {
+	LATE_SYSTEM_SLEEP_PM_OPS(k3_r5_suspend_late, NULL)
+};
+
 static struct platform_driver k3_r5_rproc_driver = {
 	.probe = k3_r5_probe,
 	.driver = {
 		.name = "k3_r5_rproc",
+		.pm = &k3_r5_pm_ops,
 		.of_match_table = k3_r5_of_match,
 	},
 };
