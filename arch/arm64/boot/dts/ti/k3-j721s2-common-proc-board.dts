@@ -321,6 +321,13 @@
 			J721S2_WKUP_IOPAD(0x108, PIN_INPUT, 0) /* (N27) MCU_ADC1_AIN7 */
 		>;
 	};
+
+	wkup_gpio_pins_default: wkup-gpio-pins-default {
+		bootph-all;
+		pinctrl-single,pins = <
+			J784S4_WKUP_IOPAD(0x070, PIN_INPUT, 7) /* (L37) WKUP_GPIO0_6 */
+		>;
+	};
 };
 
 &wkup_pmx1 {
@@ -345,6 +352,9 @@
 
 &wkup_gpio0 {
 	status = "okay";
+	bootph-all;
+	pinctrl-names = "default";
+	pinctrl-0 = <&wkup_gpio_pins_default>;
 };
 
 &wkup_uart0 {
