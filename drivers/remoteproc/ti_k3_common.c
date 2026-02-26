@@ -25,6 +25,7 @@
 #include <linux/module.h>
 #include <linux/of_address.h>
 #include <linux/of_device.h>
+#include <linux/of_platform.h>
 #include <linux/of_reserved_mem.h>
 #include <linux/omap-mailbox.h>
 #include <linux/platform_device.h>
@@ -215,6 +216,10 @@ int k3_rproc_request_mbox(struct rproc *rproc)
 	struct k3_rproc *kproc = rproc->priv;
 	struct mbox_client *client = &kproc->client;
 	struct device *dev = kproc->dev;
+	struct platform_device *mbox_pdev;
+	struct device_node *np = dev_of_node(dev);
+	struct device_node *mbox_np;
+	struct device_link *link;
 	int ret;
 
 	client->dev = dev;
@@ -231,6 +236,29 @@ int k3_rproc_request_mbox(struct rproc *rproc)
 	ret = devm_add_action_or_reset(dev, k3_rproc_free_channel, kproc);
 	if (ret)
 		return ret;
+
+	mbox_np = of_parse_phandle(np, "mboxes", 0);
+	if (!mbox_np) {
+		dev_err(dev, "failed to get mboxes\n");
+		return -ENODEV;
+	}
+
+	mbox_pdev = of_find_device_by_node(mbox_np);
+	of_node_put(mbox_np);
+	if (!mbox_pdev) {
+		dev_err(dev, "mailbox device not yet ready\n");
+		return -EPROBE_DEFER;
+	}
+
+	/* Ensure mailbox is suspended after remoteproc */
+	if (dev->driver && dev->driver->pm) {
+		link = device_link_add(dev, &mbox_pdev->dev,
+					DL_FLAG_AUTOREMOVE_SUPPLIER);
+		put_device(&mbox_pdev->dev);
+		if (IS_ERR(link))
+			return dev_err_probe(dev, PTR_ERR(link),
+					     "Unable to create device link with mbox dev\n");
+	}
 
 	return 0;
 }

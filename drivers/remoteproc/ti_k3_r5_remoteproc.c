@@ -1318,8 +1318,12 @@ static int k3_r5_cluster_of_init(struct platform_device *pdev)
 	struct k3_r5_cluster *cluster = platform_get_drvdata(pdev);
 	struct device *dev = &pdev->dev;
 	struct device_node *np = dev_of_node(dev);
+	struct device_node *child_np;
+	struct device_node *mbox_np;
+	struct platform_device *mbox_pdev;
 	struct platform_device *cpdev;
 	struct k3_r5_core *core;
+	struct device_link *link;
 	int ret;
 
 	for_each_available_child_of_node_scoped(np, child) {
@@ -1328,6 +1332,33 @@ static int k3_r5_cluster_of_init(struct platform_device *pdev)
 			ret = -ENODEV;
 			dev_err(dev, "could not get R5 core platform device\n");
 			goto fail;
+		}
+
+		child_np = dev_of_node(&cpdev->dev);
+
+		mbox_np = of_parse_phandle(child_np, "mboxes", 0);
+		if (!mbox_np) {
+			dev_err(dev, "failed to get mboxes\n");
+			ret = -ENODEV;
+			goto fail;
+		}
+
+		mbox_pdev = of_find_device_by_node(mbox_np);
+		of_node_put(mbox_np);
+		if (!mbox_pdev) {
+			dev_err(dev, "mailbox device not yet ready\n");
+			ret = -EPROBE_DEFER;
+			goto fail;
+		}
+
+		/* Ensure mailbox is suspended after remoteproc */
+		if (dev->driver && dev->driver->pm) {
+			link = device_link_add(dev, &mbox_pdev->dev,
+						DL_FLAG_AUTOREMOVE_SUPPLIER);
+			put_device(&mbox_pdev->dev);
+			if (IS_ERR(link))
+				return dev_err_probe(dev, PTR_ERR(link),
+						     "Unable to create device link with mbox dev\n");
 		}
 
 		ret = k3_r5_core_of_init(cpdev);
