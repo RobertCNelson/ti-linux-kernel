@@ -16,6 +16,7 @@
 #include <linux/remoteproc.h>
 #include <linux/reset.h>
 #include <linux/slab.h>
+#include <linux/suspend.h>
 
 #include "omap_remoteproc.h"
 #include "remoteproc_internal.h"
@@ -134,6 +135,7 @@ static int k3_dsp_rproc_probe(struct platform_device *pdev)
 		return ret;
 
 	init_completion(&kproc->shutdown_complete);
+	init_completion(&kproc->suspend_comp);
 
 	ret = k3_rproc_of_get_memories(pdev, kproc);
 	if (ret)
@@ -152,13 +154,15 @@ static int k3_dsp_rproc_probe(struct platform_device *pdev)
 	if (p_state) {
 		dev_info(dev, "configured DSP for IPC-only mode\n");
 		rproc->state = RPROC_DETACHED;
-		/* override rproc ops with only required IPC-only mode ops */
 		kproc->rproc->ops->prepare = NULL;
 		kproc->rproc->ops->unprepare = NULL;
 		kproc->rproc->ops->start = NULL;
 		kproc->rproc->ops->stop = NULL;
 	} else {
 		dev_info(dev, "configured DSP for remoteproc mode\n");
+		kproc->pm_notifier.notifier_call = k3_rproc_pm_notifier_call;
+		register_pm_notifier(&kproc->pm_notifier);
+		kproc->late_pm = true;
 	}
 
 	ret = devm_rproc_add(dev, rproc);
@@ -238,11 +242,16 @@ static const struct of_device_id k3_dsp_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, k3_dsp_of_match);
 
+static const struct dev_pm_ops k3_dsp_pm_ops = {
+	LATE_SYSTEM_SLEEP_PM_OPS(k3_rproc_suspend_late, NULL)
+};
+
 static struct platform_driver k3_dsp_rproc_driver = {
 	.probe	= k3_dsp_rproc_probe,
 	.remove = k3_dsp_rproc_remove,
 	.driver	= {
 		.name = "k3-dsp-rproc",
+		.pm = &k3_dsp_pm_ops,
 		.of_match_table = k3_dsp_of_match,
 	},
 };
