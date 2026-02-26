@@ -42,6 +42,7 @@ dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk-ethfw.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk-m2-cc3351.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk-csi2-ox05b1s.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62a7-phyboard-lyra-rdk.dtb
+dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk-fusion-2.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk-fusion.dtbo
 
 # Boards with AM62Dx SoC
