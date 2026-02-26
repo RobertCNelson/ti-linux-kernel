@@ -15,6 +15,7 @@
 		serial1 = &mcu_uart0;
 		serial2 = &main_uart0;
 		serial3 = &main_uart1;
+		serial4 = &pruss_uart;
 		mmc0 = &sdhci0;
 		mmc1 = &sdhci1;
 		mmc2 = &sdhci2;
@@ -332,6 +333,13 @@
 			AM62X_IOPAD(0x01a0, PIN_OUTPUT, 6) /* (E18) MCASP0_AXR0.EHRPWM1_B */
 		>;
 	};
+
+	pruss_uart_pins: pruss-uart-pins {
+		pinctrl-single,pins = <
+			AM62X_IOPAD(0x01d8, PIN_INPUT, 6) /* (C15) MCAN0_TX.PR0_UART0_RXD */
+			AM62X_IOPAD(0x01dc, PIN_OUTPUT, 6) /* (E15) MCAN0_RX.PR0_UART0_TXD */
+		>;
+	};
 };
 
 &mcu_pmx0 {
@@ -614,6 +622,12 @@
 	/* P36/P33 of J3 */
 	pinctrl-names = "default";
 	pinctrl-0 = <&main_epwm1_pins_default>;
+	status = "okay";
+};
+
+&pruss_uart {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pruss_uart_pins>;
 	status = "okay";
 };
 
