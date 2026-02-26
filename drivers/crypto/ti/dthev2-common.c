@@ -67,6 +67,27 @@ struct scatterlist *dthe_copy_sg(struct scatterlist *dst,
 	return to_sg;
 }
 
+inline struct dma_async_tx_descriptor
+*dthe_alloc_dma_descriptor(struct dma_chan *chan,
+			   struct scatterlist *sg,
+			   int nents,
+			   enum dma_transfer_direction dir)
+{
+	struct dma_async_tx_descriptor *desc;
+	int retries = 10;
+
+	while (retries--) {
+		desc = dmaengine_prep_slave_sg(chan, sg, nents, dir,
+					       DMA_PREP_INTERRUPT | DMA_CTRL_ACK);
+		if (desc)
+			return desc;
+
+		usleep_range(100, 200);
+	}
+
+	return desc;
+}
+
 static int dthe_dma_init(struct dthe_data *dev_data)
 {
 	int ret;

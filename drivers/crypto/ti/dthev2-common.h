@@ -169,6 +169,12 @@ struct scatterlist *dthe_copy_sg(struct scatterlist *dst,
 				 struct scatterlist *src,
 				 int buflen);
 
+inline struct dma_async_tx_descriptor
+*dthe_alloc_dma_descriptor(struct dma_chan *chan,
+			   struct scatterlist *sg,
+			   int nents,
+			   enum dma_transfer_direction dir);
+
 int dthe_register_aes_algs(void);
 void dthe_unregister_aes_algs(void);
 

@@ -432,16 +432,16 @@ static int dthe_aes_run(struct crypto_engine *engine, void *areq)
 		}
 	}
 
-	desc_in = dmaengine_prep_slave_sg(dev_data->dma_aes_rx, dst, dst_mapped_nents,
-					  DMA_DEV_TO_MEM, DMA_PREP_INTERRUPT | DMA_CTRL_ACK);
+	desc_in = dthe_alloc_dma_descriptor(dev_data->dma_aes_rx, dst, dst_mapped_nents,
+					    DMA_DEV_TO_MEM);
 	if (!desc_in) {
 		dev_err(dev_data->dev, "IN prep_slave_sg() failed\n");
 		ret = -EINVAL;
 		goto aes_prep_err;
 	}
 
-	desc_out = dmaengine_prep_slave_sg(dev_data->dma_aes_tx, src, src_mapped_nents,
-					   DMA_MEM_TO_DEV, DMA_PREP_INTERRUPT | DMA_CTRL_ACK);
+	desc_out = dthe_alloc_dma_descriptor(dev_data->dma_aes_tx, src, src_mapped_nents,
+					     DMA_MEM_TO_DEV);
 	if (!desc_out) {
 		dev_err(dev_data->dev, "OUT prep_slave_sg() failed\n");
 		ret = -EINVAL;
@@ -994,8 +994,8 @@ static int dthe_aead_run(struct crypto_engine *engine, void *areq)
 		goto aead_dma_map_src_err;
 	}
 
-	desc_out = dmaengine_prep_slave_sg(dev_data->dma_aes_tx, src, src_mapped_nents,
-					   DMA_MEM_TO_DEV, DMA_PREP_INTERRUPT | DMA_CTRL_ACK);
+	desc_out = dthe_alloc_dma_descriptor(dev_data->dma_aes_tx, src, src_mapped_nents,
+					     DMA_MEM_TO_DEV);
 	if (!desc_out) {
 		ret = -EINVAL;
 		goto aead_dma_prep_src_err;
@@ -1011,9 +1011,8 @@ static int dthe_aead_run(struct crypto_engine *engine, void *areq)
 			goto aead_dma_prep_src_err;
 		}
 
-		desc_in = dmaengine_prep_slave_sg(dev_data->dma_aes_rx, dst,
-						  dst_mapped_nents, DMA_DEV_TO_MEM,
-						  DMA_PREP_INTERRUPT | DMA_CTRL_ACK);
+		desc_in = dthe_alloc_dma_descriptor(dev_data->dma_aes_rx, dst, dst_mapped_nents,
+						    DMA_DEV_TO_MEM);
 		if (!desc_in) {
 			ret = -EINVAL;
 			goto aead_dma_prep_dst_err;

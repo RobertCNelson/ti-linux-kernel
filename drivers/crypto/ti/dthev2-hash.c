@@ -236,8 +236,8 @@ static int dthe_hash_dma_start(struct ahash_request *req, struct scatterlist *sr
 		goto hash_err;
 	}
 
-	desc_out = dmaengine_prep_slave_sg(dev_data->dma_sha_tx, src, mapped_nents,
-					   DMA_MEM_TO_DEV, DMA_PREP_INTERRUPT | DMA_CTRL_ACK);
+	desc_out = dthe_alloc_dma_descriptor(dev_data->dma_sha_tx, src, mapped_nents,
+					     DMA_MEM_TO_DEV);
 	if (!desc_out) {
 		dev_err(dev_data->dev, "OUT prep_slave_sg() failed\n");
 		ret = -EINVAL;
