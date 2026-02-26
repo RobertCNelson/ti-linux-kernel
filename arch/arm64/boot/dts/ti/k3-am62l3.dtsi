@@ -41,6 +41,8 @@
 			next-level-cache = <&l2_0>;
 			operating-points-v2 = <&a53_opp_table>;
 			clocks = <&scmi_clk 356>;
+			power-domains = <&CPU_PD>;
+			power-domain-names = "psci";
 		};
 
 		cpu1: cpu@1 {
@@ -57,6 +59,31 @@
 			next-level-cache = <&l2_0>;
 			operating-points-v2 = <&a53_opp_table>;
 			clocks = <&scmi_clk 357>;
+			power-domains = <&CPU_PD>;
+			power-domain-names = "psci";
+		};
+
+		idle-states {
+			entry-method = "psci";
+
+			cpu_sleep_0: stby {
+				compatible = "arm,idle-state";
+				idle-state-name = "Standby";
+				arm,psci-suspend-param = <0x00000001>;
+				entry-latency-us = <25>;
+				exit-latency-us = <100>;
+				min-residency-us = <1000>;
+			};
+		};
+
+		domain-idle-states {
+			cluster_sleep_0: low-latency-stby {
+				compatible = "domain-idle-state";
+				arm,psci-suspend-param = <0x01000021>;
+				entry-latency-us = <200>;
+				exit-latency-us = <300>;
+				min-residency-us = <10000>;
+			};
 		};
 	};
 
@@ -110,5 +137,28 @@
 			clock-latency-ns = <6000000>;
 			opp-suspend;
 		};
+	};
+};
+/*
+ * HACK : Adding DSS driver under the Cluster PD
+ * The standby state puts DDR in Auto Self Refresh, however due to a bug in DDR Auto self refresh
+ * when the display is active, DSS driver faces Plane Underflow and SYNC_LOST errors.
+ * This is a workaround to prevent entry into standby when the display is active.
+ */
+&scmi_pds {
+	power-domain-map = <39 &CLUSTER_PD>, /* DSS0 */
+			   <38 &CLUSTER_PD>; /* DSS_DSI0 */
+};
+
+&psci {
+	CPU_PD: power-controller-cpu {
+		#power-domain-cells = <0>;
+		power-domains = <&CLUSTER_PD>;
+		domain-idle-states = <&cpu_sleep_0>;
+	};
+
+	CLUSTER_PD: power-controller-cluster {
+		#power-domain-cells = <0>;
+		domain-idle-states = <&cluster_sleep_0>;
 	};
 };
