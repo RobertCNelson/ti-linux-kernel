@@ -78,6 +78,9 @@ struct k3_rproc_dev_data {
  * @mbox: mailbox channel handle
  * @client: mailbox client to request the mailbox channel
  * @priv: void pointer to carry any private data
+ * @suspend_comp: supend completion synchronozation event
+ * @pm_notifier: notifier to subscribe for pm suspend event
+ * @suspend_status: suspend status
  */
 struct k3_rproc {
 	struct device *dev;
@@ -95,6 +98,10 @@ struct k3_rproc {
 	struct mbox_client client;
 	struct completion shutdown_complete;
 	void *priv;
+	struct completion suspend_comp;
+	struct notifier_block pm_notifier;
+	bool late_pm;
+	enum omap_rp_mbox_messages suspend_status;
 };
 
 void k3_rproc_mbox_callback(struct mbox_client *client, void *data);
@@ -119,4 +126,8 @@ int k3_reserved_mem_init(struct k3_rproc *kproc);
 void k3_release_tsp(void *data);
 bool is_core_in_wfi(struct k3_rproc *kproc);
 int notify_shutdown_rproc(struct k3_rproc *kproc);
+int k3_rproc_suspend(struct rproc *rproc);
+int k3_rproc_resume(struct rproc *rproc);
+int k3_rproc_pm_notifier_call(struct notifier_block *bl, unsigned long state, void *unused);
+int k3_rproc_suspend_late(struct device *dev);
 #endif /* REMOTEPROC_TI_K3_COMMON_H */
