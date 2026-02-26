@@ -9,6 +9,7 @@
 #include <crypto/algapi.h>
 #include <crypto/hash.h>
 #include <crypto/internal/hash.h>
+#include <crypto/md5.h>
 #include <crypto/sha2.h>
 
 #include "dthev2-common.h"
@@ -65,6 +66,9 @@ static void dthe_hash_write_zero_message(enum dthe_hash_alg_sel mode, void *dst)
 	case DTHE_HASH_SHA224:
 		memcpy(dst, sha224_zero_message_hash, SHA224_DIGEST_SIZE);
 		break;
+	case DTHE_HASH_MD5:
+		memcpy(dst, md5_zero_message_hash, MD5_DIGEST_SIZE);
+		break;
 	default:
 		break;
 	}
@@ -93,6 +97,9 @@ static enum dthe_hash_alg_sel dthe_hash_get_hash_mode(struct crypto_ahash *tfm)
 	case SHA224_DIGEST_SIZE:
 		hash_mode = DTHE_HASH_SHA224;
 		break;
+	case MD5_DIGEST_SIZE:
+		hash_mode = DTHE_HASH_MD5;
+		break;
 	default:
 		hash_mode = DTHE_HASH_ERR;
 		break;
@@ -113,6 +120,9 @@ static unsigned int dthe_hash_get_phash_size(struct dthe_tfm_ctx *ctx)
 	case DTHE_HASH_SHA256:
 	case DTHE_HASH_SHA224:
 		phash_size = SHA256_DIGEST_SIZE;
+		break;
+	case DTHE_HASH_MD5:
+		phash_size = MD5_DIGEST_SIZE;
 		break;
 	default:
 		break;
@@ -571,6 +581,39 @@ static struct ahash_engine_alg hash_algs[] = {
 						   CRYPTO_AHASH_ALG_FINUP_MAX |
 						   CRYPTO_AHASH_ALG_NO_EXPORT_CORE,
 				.cra_blocksize	 = SHA224_BLOCK_SIZE,
+				.cra_ctxsize	 = sizeof(struct dthe_tfm_ctx),
+				.cra_reqsize	 = sizeof(struct dthe_hash_req_ctx),
+				.cra_module	 = THIS_MODULE,
+			}
+		},
+		.op.do_one_request = dthe_hash_run,
+	},
+	{
+		.base.init_tfm	= dthe_hash_init_tfm,
+		.base.init	= dthe_hash_init,
+		.base.update	= dthe_hash_update,
+		.base.final	= dthe_hash_final,
+		.base.finup	= dthe_hash_finup,
+		.base.digest	= dthe_hash_digest,
+		.base.export	= dthe_hash_export,
+		.base.import	= dthe_hash_import,
+		.base.halg	= {
+			.digestsize = MD5_DIGEST_SIZE,
+			.statesize = sizeof(struct dthe_hash_req_ctx),
+			.base = {
+				.cra_name	 = "md5",
+				.cra_driver_name = "md5-dthev2",
+				.cra_priority	 = 299,
+				.cra_flags	 = CRYPTO_ALG_TYPE_AHASH |
+						   CRYPTO_ALG_ASYNC |
+						   CRYPTO_ALG_OPTIONAL_KEY |
+						   CRYPTO_ALG_KERN_DRIVER_ONLY |
+						   CRYPTO_ALG_ALLOCATES_MEMORY |
+						   CRYPTO_AHASH_ALG_BLOCK_ONLY |
+						   CRYPTO_AHASH_ALG_FINAL_NONZERO |
+						   CRYPTO_AHASH_ALG_FINUP_MAX |
+						   CRYPTO_AHASH_ALG_NO_EXPORT_CORE,
+				.cra_blocksize	 = MD5_BLOCK_SIZE,
 				.cra_ctxsize	 = sizeof(struct dthe_tfm_ctx),
 				.cra_reqsize	 = sizeof(struct dthe_hash_req_ctx),
 				.cra_module	 = THIS_MODULE,
