@@ -533,29 +533,25 @@ static int ov2312_sd_enable_streams(struct v4l2_subdev *sd,
 	struct ov2312 *ov2312 = to_ov2312(sd);
 	int ret;
 
-	mutex_lock(&ov2312->lock);
+	guard(mutex)(&ov2312->lock);
 
 	if (!ov2312->enable_count) {
 		ret = pm_runtime_resume_and_get(ov2312->dev);
 		if (ret < 0)
-			goto err_unlock;
+			goto err;
 
 		ret = ov2312_start_stream(ov2312);
-		if (ret < 0)
-			goto err_runtime_put;
+		if (ret < 0) {
+			pm_runtime_put(ov2312->dev);
+			goto err;
+		}
 	}
 
 	ov2312->enable_count++;
 
-	mutex_unlock(&ov2312->lock);
-
 	return 0;
 
-err_runtime_put:
-	pm_runtime_put(ov2312->dev);
-
-err_unlock:
-	mutex_unlock(&ov2312->lock);
+err:
 	dev_err(ov2312->dev,
 		"%s: failed to enable streams %d\n", __func__, ret);
 	return ret;
