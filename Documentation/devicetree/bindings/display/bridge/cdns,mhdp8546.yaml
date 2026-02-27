@@ -57,11 +57,22 @@ properties:
   interrupts:
     maxItems: 1
 
-  cdns,no-hpd:
+  no-hpd:
     type: boolean
     description:
-      Set if the HPD line on the bridge isn't hooked up to anything or is
-      otherwise unusable.
+      Set if the HPD line on the bridge isn't physically connected to the
+      DisplayPort connector or cannot be used for hotplug detection.
+
+      Valid use cases include:
+      - HPD pin not routed to the connector on the PCB
+      - HPD signal muxed with another function (e.g., audio) on the SoC,
+        making it unavailable for hotplug detection
+      - Hardware design where HPD cannot reliably detect monitor presence
+
+      When this property is set, the driver will use auxiliary channel (AUX)
+      DPCD reads to detect monitor connection instead of relying on the
+      hardware HPD signal. Monitor detection will use polling rather than
+      interrupt-driven detection.
 
   ports:
     $ref: /schemas/graph.yaml#/properties/ports
