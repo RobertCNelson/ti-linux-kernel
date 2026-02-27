@@ -1835,7 +1835,6 @@ static int am65_cpsw_nuss_tx_compl_packets(struct am65_cpsw_common *common,
 	struct sk_buff *skb;
 	dma_addr_t desc_dma;
 	int res, num_tx = 0;
-	int xsk_tx = 0;
 
 	tx_chn = &common->tx_chns[chn];
 
@@ -1919,7 +1918,7 @@ static int am65_cpsw_nuss_tx_compl_packets(struct am65_cpsw_common *common,
 		ndev = common->ports[tx_chn->xsk_port_id].ndev;
 		netif_txq = netdev_get_tx_queue(ndev, chn);
 		txq_trans_cond_update(netif_txq);
-		xsk_tx = am65_cpsw_xsk_xmit_zc(ndev, tx_chn);
+		am65_cpsw_xsk_xmit_zc(ndev, tx_chn);
 	}
 
 	dev_dbg(dev, "%s:%u pkt:%d\n", __func__, chn, num_tx);
