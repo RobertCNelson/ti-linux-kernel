@@ -110,6 +110,7 @@ struct pru_private_data {
  * @lock: mutex to protect client usage
  * @fw_name: name of firmware image used during loading
  * @mapped_irq: virtual interrupt numbers of created fw specific mapping
+ * @rsc_tbl: Resource table
  * @pru_interrupt_map: pointer to interrupt mapping description (firmware)
  * @pru_interrupt_map_sz: pru_interrupt_map size
  * @rmw_lock: lock for read, modify, write operations on registers
