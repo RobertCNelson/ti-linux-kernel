@@ -334,7 +334,6 @@ static const struct mbox_chan_ops omap_mbox_chan_ops = {
 	.shutdown       = omap_mbox_chan_shutdown,
 };
 
-#ifdef CONFIG_PM_SLEEP
 static int omap_mbox_suspend(struct device *dev)
 {
 	struct omap_mbox_device *mdev = dev_get_drvdata(dev);
@@ -376,7 +375,6 @@ static int omap_mbox_resume(struct device *dev)
 
 	return 0;
 }
-#endif
 
 static const struct dev_pm_ops omap_mbox_pm_ops = {
 	LATE_SYSTEM_SLEEP_PM_OPS(omap_mbox_suspend, omap_mbox_resume)
