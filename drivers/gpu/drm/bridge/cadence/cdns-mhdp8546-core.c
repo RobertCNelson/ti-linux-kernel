@@ -700,6 +700,7 @@ static int cdns_mhdp_fw_activate(const struct firmware *fw,
 	 * MHDP_HW_STOPPED happens only due to driver removal when
 	 * bridge should already be detached.
 	 */
+
 	if (!mhdp->no_hpd)
 		cdns_mhdp_bridge_hpd_enable(&mhdp->bridge);
 
@@ -2029,6 +2030,9 @@ cdns_mhdp_bridge_detect(struct drm_bridge *bridge, struct drm_connector *connect
 {
 	struct cdns_mhdp_device *mhdp = bridge_to_mhdp(bridge);
 
+	if (mhdp->no_hpd)
+		cdns_mhdp_update_link_status(mhdp);
+
 	return cdns_mhdp_detect(mhdp);
 }
 
@@ -2313,7 +2317,7 @@ static int cdns_mhdp_probe(struct platform_device *pdev)
 	mhdp->aux.dev = dev;
 	mhdp->aux.transfer = cdns_mhdp_transfer;
 
-	mhdp->no_hpd = of_property_read_bool(dev->of_node, "cdns,no-hpd");
+	mhdp->no_hpd = of_property_read_bool(dev->of_node, "no-hpd");
 
 	mhdp->regs = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(mhdp->regs)) {
