@@ -721,6 +721,10 @@ int am65_cpsw_create_rxq(struct am65_cpsw_common *common, int id)
 	}
 
 	napi_enable(&flow->napi_rx);
+	if (flow->irq_disabled) {
+		flow->irq_disabled = false;
+		enable_irq(flow->irq);
+	}
 	return 0;
 
 err:
