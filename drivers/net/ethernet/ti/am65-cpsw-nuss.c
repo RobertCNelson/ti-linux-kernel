@@ -2608,6 +2608,8 @@ static void am65_cpsw_nuss_free_tx_chns(void *data)
 	for (i = 0; i < common->tx_ch_num; i++) {
 		struct am65_cpsw_tx_chn *tx_chn = &common->tx_chns[i];
 
+		irq_set_affinity_hint(tx_chn->irq, NULL);
+
 		if (!IS_ERR_OR_NULL(tx_chn->desc_pool))
 			k3_cppi_desc_pool_destroy(tx_chn->desc_pool);
 
@@ -2627,8 +2629,10 @@ static void am65_cpsw_nuss_remove_tx_chns(struct am65_cpsw_common *common)
 	for (i = 0; i < common->tx_ch_num; i++) {
 		struct am65_cpsw_tx_chn *tx_chn = &common->tx_chns[i];
 
-		if (tx_chn->irq > 0)
+		if (tx_chn->irq > 0) {
+			irq_set_affinity_hint(tx_chn->irq, NULL);
 			devm_free_irq(dev, tx_chn->irq, tx_chn);
+		}
 
 		netif_napi_del(&tx_chn->napi_tx);
 	}
@@ -2660,6 +2664,7 @@ static int am65_cpsw_nuss_ndev_add_tx_napi(struct am65_cpsw_common *common)
 				tx_chn->id, tx_chn->irq, ret);
 			goto err;
 		}
+		irq_set_affinity_hint(tx_chn->irq, get_cpu_mask(i % num_online_cpus()));
 	}
 
 	return 0;
@@ -2668,6 +2673,7 @@ err:
 	netif_napi_del(&tx_chn->napi_tx);
 	for (--i; i >= 0; i--) {
 		tx_chn = &common->tx_chns[i];
+		irq_set_affinity_hint(tx_chn->irq, NULL);
 		devm_free_irq(dev, tx_chn->irq, tx_chn);
 		netif_napi_del(&tx_chn->napi_tx);
 	}
@@ -2764,8 +2770,14 @@ static void am65_cpsw_nuss_free_rx_chns(void *data)
 {
 	struct am65_cpsw_common *common = data;
 	struct am65_cpsw_rx_chn *rx_chn;
+	struct am65_cpsw_rx_flow *flows;
+	int i;
 
 	rx_chn = &common->rx_chns;
+	flows = rx_chn->flows;
+
+	for (i = 0; i < common->rx_ch_num_flows; i++)
+		irq_set_affinity_hint(flows[i].irq, NULL);
 
 	if (!IS_ERR_OR_NULL(rx_chn->desc_pool))
 		k3_cppi_desc_pool_destroy(rx_chn->desc_pool);
@@ -2785,8 +2797,11 @@ static void am65_cpsw_nuss_remove_rx_chns(struct am65_cpsw_common *common)
 	flows = rx_chn->flows;
 
 	for (i = 0; i < common->rx_ch_num_flows; i++) {
-		if (!(flows[i].irq < 0))
+		if (!(flows[i].irq < 0)) {
+			irq_set_affinity_hint(flows[i].irq, NULL);
 			devm_free_irq(dev, flows[i].irq, &flows[i]);
+		}
+
 		netif_napi_del(&flows[i].napi_rx);
 	}
 
@@ -2915,6 +2930,8 @@ static int am65_cpsw_nuss_init_rx_chns(struct am65_cpsw_common *common)
 			flow->irq = -EINVAL;
 			goto err_request_irq;
 		}
+
+		irq_set_affinity_hint(flow->irq, get_cpu_mask(cpumask_first(cpu_present_mask)));
 	}
 
 	/* setup classifier to route priorities to flows */
@@ -2928,6 +2945,7 @@ err_request_irq:
 err_flow:
 	for (--i; i >= 0; i--) {
 		flow = &rx_chn->flows[i];
+		irq_set_affinity_hint(flow->irq, NULL);
 		devm_free_irq(dev, flow->irq, flow);
 		netif_napi_del(&flow->napi_rx);
 	}
