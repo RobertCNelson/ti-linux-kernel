@@ -56,6 +56,7 @@ dtb-$(CONFIG_ARCH_K3) += k3-am62l3-evm-dsi-rpi-7inch-panel.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62l3-evm-lpmdemo.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-am62l3-evm-lpm-wkup-sources.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62l3-evm-m2-cc3351.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-am62l3-evm-nand.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62l3-evm-tida-010939.dtbo
 
 # Boards with AM62Px SoC
@@ -342,6 +343,8 @@ k3-j784s4-evm-usxgmii-exp1-exp2-dtbs := k3-j784s4-evm.dtb \
 	k3-j784s4-evm-usxgmii-exp1-exp2.dtbo
 k3-am62l3-evm-dsi-rpi-7inch-panel-dtbs := k3-am62l3-evm.dtb \
 	k3-am62l3-evm-dsi-rpi-7inch-panel.dtbo
+k3-am62l3-evm-nand-dtbs := k3-am62l3-evm.dtb \
+	k3-am62l3-evm-nand.dtbo
 k3-am62l3-evm-tida-010939-dtbs := k3-am62l3-evm.dtb \
 	k3-am62l3-evm-tida-010939.dtbo
 dtb- += k3-am625-beagleplay-csi2-ov5640.dtb \
@@ -355,6 +358,7 @@ dtb- += k3-am625-beagleplay-csi2-ov5640.dtb \
 	k3-am625-sk-microtips-mf103hie-lcd2.dtb \
 	k3-am62-lp-sk-microtips-mf101hie-panel.dtb \
 	k3-am62-lp-sk-microtips-mf103hie-lcd2.dtb \
+	k3-am62l3-evm-nand.dtb \
 	k3-am62p5-sk-dsi-rpi-7inch-panel.dtb \
 	k3-am62p5-sk-dss-shared-mode.dtb \
 	k3-am62-lp-sk-hdmi-audio.dtb \
