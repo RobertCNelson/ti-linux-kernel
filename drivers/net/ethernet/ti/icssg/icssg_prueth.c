@@ -382,9 +382,11 @@ static void emac_adjust_link(struct net_device *ndev)
 			spin_unlock_irqrestore(&emac->lock, flags);
 			icssg_config_set_speed(emac);
 			icssg_set_port_state(emac, ICSSG_EMAC_PORT_FORWARD);
+			icssg_qos_link_up(ndev);
 
 		} else {
 			icssg_set_port_state(emac, ICSSG_EMAC_PORT_DISABLE);
+			icssg_qos_link_down(ndev);
 		}
 	}
 
@@ -1038,6 +1040,7 @@ static int emac_ndo_stop(struct net_device *ndev)
 	prueth_destroy_rxq(emac);
 
 	cancel_work_sync(&emac->rx_mode_work);
+	cancel_work_sync(&emac->qos.iet.fpe_config_task);
 
 	/* Destroying the queued work in ndo_stop() */
 	cancel_delayed_work_sync(&emac->stats_work);
@@ -1473,6 +1476,8 @@ static int prueth_netdev_init(struct prueth *prueth,
 	INIT_WORK(&emac->rx_mode_work, emac_ndo_set_rx_mode_work);
 
 	INIT_DELAYED_WORK(&emac->stats_work, icssg_stats_work_handler);
+
+	icssg_qos_init(ndev);
 
 	ret = pruss_request_mem_region(prueth->pruss,
 				       port == PRUETH_PORT_MII0 ?
@@ -2430,6 +2435,9 @@ netdev_unregister:
 			prueth->emac[i]->ndev->phydev = NULL;
 		}
 		unregister_netdev(prueth->registered_netdevs[i]);
+		disable_work_sync(&prueth->emac[i]->rx_mode_work);
+		disable_work_sync(&prueth->emac[i]->qos.iet.fpe_config_task);
+		mutex_destroy(&prueth->emac[i]->qos.iet.fpe_lock);
 	}
 
 unregister_devlink:
@@ -2492,6 +2500,9 @@ static void prueth_remove(struct platform_device *pdev)
 		phy_disconnect(prueth->emac[i]->ndev->phydev);
 		prueth->emac[i]->ndev->phydev = NULL;
 		unregister_netdev(prueth->registered_netdevs[i]);
+		disable_work_sync(&prueth->emac[i]->rx_mode_work);
+		disable_work_sync(&prueth->emac[i]->qos.iet.fpe_config_task);
+		mutex_destroy(&prueth->emac[i]->qos.iet.fpe_lock);
 	}
 	prueth_unregister_devlink(prueth);
 
