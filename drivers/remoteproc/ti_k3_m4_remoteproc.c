@@ -64,7 +64,7 @@ static int k3_m4_rproc_probe(struct platform_device *pdev)
 	kproc->dev = dev;
 	kproc->rproc = rproc;
 	kproc->data = data;
-	platform_set_drvdata(pdev, rproc);
+	platform_set_drvdata(pdev, kproc);
 
 	kproc->ti_sci = devm_ti_sci_get_by_phandle(dev, "ti,sci");
 	if (IS_ERR(kproc->ti_sci))
