@@ -100,6 +100,7 @@ dtb-$(CONFIG_ARCH_K3) += k3-am62x-sk-lpm-wkup-sources.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62x-sk-lpm-io-ddr-wkup-sources.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62x-sk-lpm-standby.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62x-sk-mcan.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-am62x-sk-mcspi-loopback.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62x-sk-pwm.dtbo
 
 # Boards with AM64x SoC

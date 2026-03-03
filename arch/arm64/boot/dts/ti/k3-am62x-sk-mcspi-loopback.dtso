@@ -1,0 +1,67 @@
+
+
+// SPDX-License-Identifier: GPL-2.0
+/**
+ * DT Overlay for using McSPI on AM625-SK, AM62 LP-SK, AM62A7-SK, AM62P5-SK
+ *
+ * Copyright (C) 2022 Texas Instruments Incorporated - https://www.ti.com/
+ */
+
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/gpio/gpio.h>
+#include "k3-pinctrl.h"
+
+&main_pmx0 {
+	main_spi0_pins_default: main-spi0-pins-default {
+		pinctrl-single,pins = <
+			AM62X_IOPAD(0x01c0, PIN_INPUT, 0) /* (B13) SPI0_D0 */
+			AM62X_IOPAD(0x01c4, PIN_INPUT, 0) /* (B14) SPI0_D1 */
+			AM62X_IOPAD(0x01bc, PIN_INPUT, 0) /* (A14) SPI0_CLK */
+			AM62X_IOPAD(0x01b4, PIN_INPUT, 0) /* (A13) SPI0_CS0 */
+		>;
+	};
+};
+
+&main_i2c1 {
+	gpio@22 {
+		en_rpi_3v3 {
+			gpio-hog;
+			gpios = <5 GPIO_ACTIVE_HIGH>;
+			output-high;
+			line-name = "EXP_PS_3V3_EN";
+		};
+	};
+};
+
+&epwm0 {
+	/* Conflict: SPI0_CS0 */
+	status = "disabled";
+};
+
+&epwm1 {
+	/* Conflict: SPI0_D0, SPI0_CLK */
+	status = "disabled";
+};
+
+&main_spi0 {
+	/* AM62P: J4: P19->P21 & P23->P24 */
+	/* AM62X: J3: P19->P21 & P23->P24 */
+	#address-cells = <1>;
+	#size-cells = <0>;
+	pinctrl-0 = <&main_spi0_pins_default>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	spidev@0 {
+		/*
+		 * Using spidev compatible is warned loudly,
+		 * thus use another equivalent compatible id
+		 * from spidev.
+		 */
+		compatible = "rohm,dh2228fv";
+		spi-max-frequency = <24000000>;
+		reg = <0>;
+	};
+};
