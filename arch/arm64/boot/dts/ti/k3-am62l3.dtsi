@@ -146,7 +146,8 @@
  * This is a workaround to prevent entry into standby when the display is active.
  */
 &scmi_pds {
-	power-domain-map = <39 &CLUSTER_PD>, /* DSS0 */
+	power-domain-map = <3 &CLUSTER_PD>, /* CPSW3G */
+			   <39 &CLUSTER_PD>, /* DSS0 */
 			   <38 &CLUSTER_PD>; /* DSS_DSI0 */
 };
 
