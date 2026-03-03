@@ -134,6 +134,8 @@ struct k3_r5_core {
 static int k3_r5_split_reset(struct k3_rproc *kproc)
 {
 	int ret;
+	struct k3_r5_core *core = kproc->priv;
+	struct k3_r5_cluster *cluster = core->cluster;
 
 	ret = reset_control_assert(kproc->reset);
 	if (ret) {
@@ -141,6 +143,14 @@ static int k3_r5_split_reset(struct k3_rproc *kproc)
 			ret);
 		return ret;
 	}
+
+	/* On AM64 devices power-down of core1 in r5f cluster, even when core0
+	 * is on randomly gets the lpsc stuck in transition state and makes the core
+	 * un-usable. So as a work around keep the power state on with reset
+	 * asserted.
+	 */
+	if (cluster->soc_data->single_cpu_mode)
+		return ret;
 
 	ret = kproc->ti_sci->ops.dev_ops.put_device(kproc->ti_sci,
 						    kproc->ti_sci_id);
@@ -418,7 +428,7 @@ static int k3_r5_rproc_unprepare(struct rproc *rproc)
 	core0 = list_first_entry(&cluster->cores, struct k3_r5_core, elem);
 	core1 = list_last_entry(&cluster->cores, struct k3_r5_core, elem);
 	if (cluster->mode == CLUSTER_MODE_SPLIT && core == core0 &&
-	    core1->released_from_reset) {
+	    core1->released_from_reset && !cluster->soc_data->single_cpu_mode) {
 		ret = wait_event_interruptible_timeout(cluster->core_transition,
 						       !core1->released_from_reset,
 						       msecs_to_jiffies(2000));
@@ -439,7 +449,9 @@ static int k3_r5_rproc_unprepare(struct rproc *rproc)
 	 * Notify all threads in the wait queue when core1 state has changed so
 	 * that threads waiting for this condition can be executed.
 	 */
-	core->released_from_reset = false;
+	if (!cluster->soc_data->single_cpu_mode)
+		core->released_from_reset = false;
+
 	if (core == core1)
 		wake_up_interruptible(&cluster->core_transition);
 
