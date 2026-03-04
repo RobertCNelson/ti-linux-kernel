@@ -12,6 +12,8 @@
 #include <dt-bindings/net/ti-dp83867.h>
 #include "k3-am62d2.dtsi"
 
+#include "k3-timesync-router.h"
+
 / {
 	compatible = "ti,am62d2-evm", "ti,am62d2";
 	model = "Texas Instruments AM62D2 EVM";
@@ -986,6 +988,16 @@
 			<&system_deep_sleep>,
 			<&system_mcu_only>,
 			<&system_standby>;
+};
+
+&timesync_router {
+	/* Use Time Sync Router to map GENF1 input to HW3_TS_PUSH output */
+	mux-reg-mask-val = <
+		/* pps [cpsw cpts genf1] in17 -> out12 [cpsw cpts hw3_push] */
+		K3_TS_OFFSET(12, 0x0001ffff, 17)
+		>;
+	idle-states = <0x1>;
+	status = "okay";
 };
 
 #include "k3-am62a-ti-ipc-firmware.dtsi"
