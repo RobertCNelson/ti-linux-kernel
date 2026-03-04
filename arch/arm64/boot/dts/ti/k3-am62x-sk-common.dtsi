@@ -9,6 +9,8 @@
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/net/ti-dp83867.h>
 
+#include "k3-timesync-router.h"
+
 / {
 	aliases {
 		serial0 = &wkup_uart0;
@@ -485,6 +487,11 @@
 	bootph-all;
 	pinctrl-names = "default";
 	pinctrl-0 = <&main_rgmii1_pins_default>;
+
+	cpts@3d000 {
+		/* MAP HW3_TS_PUSH to GENF1 */
+		ti,pps = <2 1>;
+	};
 };
 
 &cpsw_port1 {
@@ -628,6 +635,14 @@
 &pruss_uart {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pruss_uart_pins>;
+	status = "okay";
+};
+
+&timesync_router {
+	mux-reg-mask-val = <
+		K3_TS_OFFSET(12, 0xff, 17)
+		>;
+	idle-states = <0x1>;
 	status = "okay";
 };
 
