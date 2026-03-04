@@ -116,6 +116,9 @@ struct k3_r5_cluster {
  * @atcm_enable: flag to control ATCM enablement
  * @btcm_enable: flag to control BTCM enablement
  * @loczrama: flag to dictate which TCM is at device address 0x0
+ * @set_cfg: optinal processor specfic config flags to set
+ * @clr_cfg: optinal processor specfic config flags to clear
+ * @boot_vec: boot vector for the processor
  * @released_from_reset: flag to signal when core is out of reset
  */
 struct k3_r5_core {
@@ -128,6 +131,9 @@ struct k3_r5_core {
 	u32 atcm_enable;
 	u32 btcm_enable;
 	u32 loczrama;
+	u32 set_cfg;
+	u32 clr_cfg;
+	u64 boot_vec;
 	bool released_from_reset;
 };
 
@@ -344,6 +350,14 @@ static int k3_r5_rproc_prepare(struct rproc *rproc)
 			dev_err(dev, "can not power up core1 before core0");
 			return -EPERM;
 		}
+	}
+
+	/* restore device configuration */
+	ret = ti_sci_proc_set_config(kproc->tsp, core->boot_vec, core->set_cfg,
+				     core->clr_cfg);
+	if (ret) {
+		dev_err(dev, "set config failed: %d\n", ret);
+		return ret;
 	}
 
 	ret = ti_sci_proc_get_status(kproc->tsp, &boot_vec, &cfg, &ctrl, &stat);
@@ -781,6 +795,10 @@ static int k3_r5_rproc_configure(struct k3_rproc *kproc)
 					     set_cfg, clr_cfg);
 	}
 
+	/* cache set_cfg and clr_cfg */
+	core->boot_vec = boot_vec;
+	core->set_cfg = set_cfg;
+	core->clr_cfg = clr_cfg;
 out:
 	return ret;
 }
