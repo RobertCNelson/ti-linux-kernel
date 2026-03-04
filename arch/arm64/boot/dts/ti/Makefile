@@ -192,6 +192,7 @@ dtb-$(CONFIG_ARCH_K3) += k3-j721s2-evm-gesi-exp-board.dtbo
 k3-j721s2-evm-dtbs := k3-j721s2-common-proc-board.dtb k3-j721s2-evm-gesi-exp-board.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j721s2-evm.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-j721s2-evm-pcie1-ep.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-j721s2-evm-ub954.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j721s2-evm-usb0-type-a.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j721s2-evm-audio.dtbo
 
@@ -356,6 +357,8 @@ k3-j721s2-evm-pcie1-ep-dtbs := k3-j721s2-common-proc-board.dtb \
 	k3-j721s2-evm-pcie1-ep.dtbo
 k3-j721s2-evm-mcspi-loopback-dtbs := k3-j721s2-common-proc-board.dtb \
 	k3-j7200-evm-mcspi-loopback.dtbo
+k3-j721s2-evm-ub954-dtbs := k3-j721s2-evm.dtb \
+	k3-j721s2-evm-ub954.dtbo
 k3-j721s2-evm-usb0-type-a-dtbs := k3-j721s2-common-proc-board.dtb \
 	k3-j721s2-evm-usb0-type-a.dtbo
 k3-j721s2-evm-audio-dtbs := k3-j721s2-common-proc-board.dtb \
@@ -454,6 +457,7 @@ dtb- += k3-am625-beagleplay-csi2-ov5640.dtb \
 	k3-j721s2-evm-fpdlink-fusion.dtb \
 	k3-j721s2-evm-pcie1-ep.dtb \
 	k3-j721s2-evm-mcspi-loopback.dtb \
+	k3-j721s2-evm-ub954.dtb \
 	k3-j721s2-evm-usb0-type-a.dtb \
 	k3-j721s2-evm-audio.dtb \
 	k3-j722s-evm-csi2-quad-rpi-cam-imx219.dtb \
