@@ -3570,7 +3570,7 @@ static int ub960_configure_ports_for_streaming(struct ub960_data *priv,
 	} rx_data[UB960_MAX_RX_NPORTS] = {};
 	u8 vc_map[UB960_MAX_RX_NPORTS] = {};
 	struct v4l2_subdev_route *route;
-	int ret;
+	int ret = 0;
 
 	ub960_get_vc_maps(priv, vc_map);
 
