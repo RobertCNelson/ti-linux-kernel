@@ -270,6 +270,7 @@
 		compatible = "ti,am62l-event-mux-router";
 		reg = <0x00 0xa00000 0x00 0x400>;
 		#mux-control-cells = <1>;
+		status = "disabled";
 	};
 
 	timer0: timer@2400000 {
