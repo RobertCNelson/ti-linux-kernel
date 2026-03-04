@@ -12,6 +12,8 @@
 #include <dt-bindings/net/ti-dp83867.h>
 #include "k3-am62a7.dtsi"
 
+#include "k3-timesync-router.h"
+
 / {
 	compatible = "ti,am62a7-sk", "ti,am62a7";
 	model = "Texas Instruments AM62A7 SK";
@@ -794,6 +796,11 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&main_rgmii1_pins_default>,
 		    <&main_rgmii2_pins_default>;
+
+	cpts@3d000 {
+		/* MAP HW3_TS_PUSH to GENF1 */
+		ti,pps = <2 1>;
+	};
 };
 
 &phy_gmii_sel {
@@ -1003,6 +1010,16 @@
 			<&system_deep_sleep>,
 			<&system_mcu_only>,
 			<&system_standby>;
+};
+
+&timesync_router {
+	/* Use Time Sync Router to map GENF1 input to HW3_TS_PUSH output */
+	mux-reg-mask-val = <
+		/* pps [cpsw cpts genf1] in17 -> out12 [cpsw cpts hw3_push] */
+		K3_TS_OFFSET(12, 0x0001ffff, 17)
+		>;
+	idle-states = <0x1>;
+	status = "okay";
 };
 
 #include "k3-am62a-ti-ipc-firmware.dtsi"
