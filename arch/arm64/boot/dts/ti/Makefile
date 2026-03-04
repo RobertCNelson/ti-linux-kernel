@@ -173,6 +173,7 @@ dtb-$(CONFIG_ARCH_K3) += k3-j721e-beagleboneai64-microtips-mf070zima-lcd3.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j721e-common-proc-board-infotainment.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j721e-evm.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-j721e-evm-ethfw.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-j721e-evm-fusion.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j721e-evm-gesi-exp-board.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j721e-evm-pcie0-ep.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j721e-evm-pcie1-ep.dtbo
@@ -319,6 +320,8 @@ k3-j721e-common-proc-board-infotainment-dtbs := k3-j721e-common-proc-board.dtb \
 	k3-j721e-common-proc-board-infotainment.dtbo
 k3-j721e-evm-ethfw-dtbs := k3-j721e-common-proc-board.dtb \
 	k3-j721e-evm-ethfw.dtbo
+k3-j721e-evm-fpdlink-fusion-dtbs := k3-j721e-evm.dtb \
+	k3-j721e-evm-fusion.dtbo
 k3-j721e-evm-mcspi-loopback-dtbs := k3-j721e-common-proc-board.dtb \
 	k3-j7200-evm-mcspi-loopback.dtbo
 k3-j721e-evm-pcie0-ep-dtbs := k3-j721e-common-proc-board.dtb \
@@ -405,6 +408,7 @@ dtb- += k3-am625-beagleplay-csi2-ov5640.dtb \
 	k3-j721e-beagleboneai64-microtips-mf070zima-lcd3.dtb \
 	k3-j721e-common-proc-board-infotainment.dtb \
 	k3-j721e-evm-ethfw.dtb \
+	k3-j721e-evm-fpdlink-fusion.dtb \
 	k3-j721e-evm-mcspi-loopback.dtb \
 	k3-j721e-evm-pcie0-ep.dtb \
 	k3-j721e-evm-pcie1-ep.dtb \
