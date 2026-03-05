@@ -1098,6 +1098,7 @@
 		#phy-cells = <0>;
 		cdns,phy-type = <PHY_TYPE_USB3>;
 		resets = <&serdes_wiz0 4>;
+		bootph-all;
 	};
 };
 
