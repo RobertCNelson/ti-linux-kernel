@@ -11,6 +11,7 @@
 #include <linux/kfifo.h>
 #include <linux/idr.h>
 #include <linux/genalloc.h>
+#include <linux/devfreq.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-mem2mem.h>
 #include <media/v4l2-ctrls.h>
@@ -758,6 +759,7 @@ struct vpu_device {
 	struct gen_pool *sram_pool;
 	struct vpu_buf sram_buf;
 	void __iomem *vdb_register;
+	struct devfreq *vpu_devfreq;
 	u32 product_code;
 	u32 ext_addr;
 	struct ida inst_ida;
@@ -771,6 +773,7 @@ struct vpu_device {
 	struct semaphore irq_sem; /* signal to irq_thread when interrupt happens*/
 	struct reset_control *resets;
 	spinlock_t irq_spinlock; /* protect instances list */
+	bool opp_table_detected;
 };
 
 struct vpu_instance;
