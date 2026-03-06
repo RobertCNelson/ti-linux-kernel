@@ -132,8 +132,8 @@ static const struct reg_field ti_rtc_reg_fields[] = {
 	[K3RTC_IRQ_ENABLE_SET_ALT] = REG_FIELD(REG_K3RTC_IRQENABLE_SET_SYS, 1, 1),
 	[K3RTC_IRQ_ENABLE_CLR_ALT] = REG_FIELD(REG_K3RTC_IRQENABLE_CLR_SYS, 1, 1),
 
-	[K3RTC_IRQ_STATUS_RAW_ALL] = REG_FIELD(REG_K3RTC_IRQSTATUS_RAW_SYS, 0, 4),
-	[K3RTC_IRQ_STATUS_ALL] = REG_FIELD(REG_K3RTC_IRQSTATUS_SYS, 0, 4),
+	[K3RTC_IRQ_STATUS_RAW_ALL] = REG_FIELD(REG_K3RTC_IRQSTATUS_RAW_SYS, 0, 5),
+	[K3RTC_IRQ_STATUS_ALL] = REG_FIELD(REG_K3RTC_IRQSTATUS_SYS, 0, 5),
 	[K3RTC_IRQ_ENABLE_CLR_ALL] = REG_FIELD(REG_K3RTC_IRQENABLE_CLR_SYS, 0, 5),
 
 	[K3RTC_AUX_32K_EN] = REG_FIELD(REG_K3RTC_GENERAL_CTL, 22, 22),
@@ -736,8 +736,8 @@ static irqreturn_t ti_k3_rtc_interrupt(s32 irq, void *dev_id)
 	guard(mutex)(&priv->mutex_lock);
 	if (priv->has_analog_block) {
 		regmap_read(priv->regmap, REG_K3RTC_GENERAL_CTL, &temp);
-		/* Check whether RTC ext pin wake up is enabled or not */
-		if ((temp & 0xF) != 0x0) {
+		/* If RTC is already configured it will be a LPM resume */
+		if (k3rtc_is_rtc_already_configured(priv)) {
 			/* Explicitly clear SW_OFF on rtc_cd side */
 			temp = temp & (~(1 << 17));
 			regmap_write(priv->regmap, REG_K3RTC_GENERAL_CTL, temp);
@@ -1183,8 +1183,8 @@ static int __maybe_unused ti_k3_rtc_resume(struct device *dev)
 	if (priv->has_analog_block) {
 		guard(mutex)(&priv->mutex_lock);
 
-		/* Check whether RTC ext pin wake up is enabled or not */
-		if (k3rtc_field_read(priv, K3RTC_GEN_WKUP_EN) != 0x0) {
+		/* If RTC is already configured it will be a LPM resume */
+		if (k3rtc_is_rtc_already_configured(priv)) {
 			ret = k3rtc_analog_resume(dev, priv);
 			if (ret)
 				return ret;
