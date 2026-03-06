@@ -397,6 +397,9 @@ static int k3rtc_analog_resume(struct device *dev, struct ti_k3_rtc *priv)
 	 */
 	k3rtc_field_write(priv, K3RTC_IRQ_STATUS_ALL, intr_src);
 
+	/* Clear the power off enable that was set during suspend */
+	k3rtc_field_write(priv, K3RTC_GEN_PWR_OFF, 0);
+
 	ret = k3rtc_lock_rtc(dev, priv);
 	if (ret)
 		return ret;
@@ -769,6 +772,17 @@ static irqreturn_t ti_k3_rtc_interrupt(s32 irq, void *dev_id)
 			ret = k3rtc_fence(priv);
 			if (ret)
 				return IRQ_NONE;
+
+			/* Clear the power off enable that was set during suspend */
+			k3rtc_field_write(priv, K3RTC_GEN_PWR_OFF, 0);
+
+			ret = k3rtc_fence(priv);
+			if (ret)
+				return IRQ_NONE;
+
+			ret = k3rtc_lock_rtc(dev, priv);
+			if (ret)
+				return IRQ_NONE;
 		}
 	}
 
@@ -796,12 +810,6 @@ static irqreturn_t ti_k3_rtc_interrupt(s32 irq, void *dev_id)
 	 * 32k domain and vbus domain.
 	 */
 	regmap_write(priv->regmap, REG_K3RTC_IRQSTATUS_SYS, reg);
-
-	if (priv->has_analog_block) {
-		ret = k3rtc_lock_rtc(dev, priv);
-		if (ret)
-			return IRQ_NONE;
-	}
 
 	/* Sync the write in */
 	ret = k3rtc_fence(priv);
