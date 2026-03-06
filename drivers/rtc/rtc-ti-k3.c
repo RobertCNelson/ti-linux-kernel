@@ -260,6 +260,148 @@ static int k3rtc_lock_rtc(struct device *dev, struct ti_k3_rtc *priv)
 	return ret;
 }
 
+static int k3rtc_analog_suspend(struct device *dev, struct ti_k3_rtc *priv)
+{
+	u32 temp;
+	int ret;
+
+	guard(mutex)(&priv->mutex_lock);
+
+	ret = k3rtc_unlock_rtc(dev, priv);
+	if (ret)
+		return ret;
+
+	regmap_read(priv->regmap, REG_K3RTC_GENERAL_CTL, &temp);
+	temp |= 0x10040;
+	regmap_write(priv->regmap, REG_K3RTC_GENERAL_CTL, temp);
+
+	regmap_read(priv->regmap, REG_K3RTC_IRQENABLE_SET_SYS, &temp);
+	temp |= 0x1C;
+	regmap_write(priv->regmap, REG_K3RTC_IRQENABLE_SET_SYS, temp);
+
+	ret = k3rtc_lock_rtc(dev, priv);
+	if (ret)
+		return ret;
+
+	ret = k3rtc_unlock_rtc(dev, priv);
+	if (ret)
+		return ret;
+
+	regmap_read(priv->regmap, REG_K3RTC_GENERAL_CTL, &temp);
+	temp |= 0x20007;
+	regmap_write(priv->regmap, REG_K3RTC_GENERAL_CTL, temp);
+
+	ret = k3rtc_fence(priv);
+	if (ret) {
+		dev_err(dev, "fence failed\n");
+		return ret;
+	}
+
+	return 0;
+}
+
+static int k3rtc_analog_resume(struct device *dev, struct ti_k3_rtc *priv)
+{
+	int ret;
+	u32 intr_src;
+	u32 temp;
+
+	/* Explicitly clear SW_OFF on rtc_cd side */
+	regmap_read(priv->regmap, REG_K3RTC_GENERAL_CTL, &temp);
+	temp = temp & (~(1 << 17));
+	regmap_write(priv->regmap, REG_K3RTC_GENERAL_CTL, temp);
+
+	ret = k3rtc_fence(priv);
+	if (ret) {
+		dev_err(dev, "fence failed\n");
+		return ret;
+	}
+
+	ret = k3rtc_lock_rtc(dev, priv);
+	if (ret)
+		return ret;
+
+	ret = k3rtc_fence(priv);
+	if (ret) {
+		dev_err(dev, "fence failed\n");
+		return ret;
+	}
+	/* read the IRQ source */
+	regmap_read(priv->regmap, REG_K3RTC_IRQSTATUS_RAW_SYS, &temp);
+
+	/* clear write error condition */
+	ret = k3rtc_unlock_rtc(dev, priv);
+	if (ret)
+		return ret;
+
+	regmap_write(priv->regmap, REG_K3RTC_SYNCPEND, 0x08);
+	/* Disable wakeup interrupts */
+	regmap_write(priv->regmap, REG_K3RTC_IRQENABLE_CLR_SYS, 0x1f);
+
+	ret = k3rtc_lock_rtc(dev, priv);
+	if (ret)
+		return ret;
+
+	ret = k3rtc_fence(priv);
+	if (ret) {
+		dev_err(dev, "fence failed\n");
+		return ret;
+	}
+	/* Read RTC's interrupt register to check the wake up source */
+	regmap_read(priv->regmap, REG_K3RTC_IRQSTATUS_RAW_SYS, &intr_src);
+
+	/* clear wakeup enable */
+	regmap_read(priv->regmap, REG_K3RTC_GENERAL_CTL, &temp);
+	temp = temp & (~(0xF));
+	ret = k3rtc_unlock_rtc(dev, priv);
+	if (ret)
+		return ret;
+
+	regmap_write(priv->regmap, REG_K3RTC_GENERAL_CTL, temp);
+	ret = k3rtc_lock_rtc(dev, priv);
+	if (ret)
+		return ret;
+
+	ret = k3rtc_fence(priv);
+	if (ret) {
+		dev_err(dev, "fence failed\n");
+		return ret;
+	}
+	/* clear wakeup interrupt */
+	ret = k3rtc_unlock_rtc(dev, priv);
+	if (ret)
+		return ret;
+
+	regmap_write(priv->regmap, REG_K3RTC_IRQSTATUS_SYS, intr_src);
+	ret = k3rtc_lock_rtc(dev, priv);
+	if (ret)
+		return ret;
+
+	ret = k3rtc_fence(priv);
+	if (ret) {
+		dev_err(dev, "fence failed\n");
+		return ret;
+	}
+
+	ret = k3rtc_unlock_rtc(dev, priv);
+	if (ret)
+		return ret;
+
+	k3rtc_field_write(priv, K3RTC_RELOAD_FROM_BBD, 0x1);
+	ret = k3rtc_fence(priv);
+	if (ret) {
+		dev_err(dev, "fence failed\n");
+		return ret;
+	}
+
+	ret = k3rtc_lock_rtc(dev, priv);
+	if (ret)
+		return ret;
+
+	return 0;
+}
+
+
 /*
  * This is the list of SoCs affected by TI's i2327 errata causing the RTC
  * state-machine to break if not unlocked fast enough during boot. These
@@ -933,40 +1075,11 @@ static int __maybe_unused ti_k3_rtc_suspend(struct device *dev)
 {
 	struct ti_k3_rtc *priv = dev_get_drvdata(dev);
 	int ret;
-	u32 temp;
 
 	if (priv->has_analog_block) {
-		guard(mutex)(&priv->mutex_lock);
-
-		ret = k3rtc_unlock_rtc(dev, priv);
+		ret = k3rtc_analog_suspend(dev, priv);
 		if (ret)
 			return ret;
-
-		regmap_read(priv->regmap, REG_K3RTC_GENERAL_CTL, &temp);
-		temp |= 0x10040;
-		regmap_write(priv->regmap, REG_K3RTC_GENERAL_CTL, temp);
-
-		regmap_read(priv->regmap, REG_K3RTC_IRQENABLE_SET_SYS, &temp);
-		temp |= 0x1C;
-		regmap_write(priv->regmap, REG_K3RTC_IRQENABLE_SET_SYS, temp);
-
-		ret = k3rtc_lock_rtc(dev, priv);
-		if (ret)
-			return ret;
-
-		ret = k3rtc_unlock_rtc(dev, priv);
-		if (ret)
-			return ret;
-
-		regmap_read(priv->regmap, REG_K3RTC_GENERAL_CTL, &temp);
-		temp |= 0x20007;
-		regmap_write(priv->regmap, REG_K3RTC_GENERAL_CTL, temp);
-
-		ret = k3rtc_fence(priv);
-		if (ret) {
-			dev_err(dev, "fence failed\n");
-			return ret;
-		}
 	}
 
 	dev_dbg(dev, "suspend complete\n");
@@ -980,107 +1093,17 @@ static int __maybe_unused ti_k3_rtc_suspend(struct device *dev)
 static int __maybe_unused ti_k3_rtc_resume(struct device *dev)
 {
 	struct ti_k3_rtc *priv = dev_get_drvdata(dev);
-	u32 temp;
 	int ret;
-	u32 intr_src;
 
 	if (priv->has_analog_block) {
 		guard(mutex)(&priv->mutex_lock);
 
-		/* Explicitly clear SW_OFF on rtc_cd side */
-		regmap_read(priv->regmap, REG_K3RTC_GENERAL_CTL, &temp);
 		/* Check whether RTC ext pin wake up is enabled or not */
-		if ((temp & 0xF) != 0x0) {
-			temp = temp & (~(1 << 17));
-			regmap_write(priv->regmap, REG_K3RTC_GENERAL_CTL, temp);
-
-			ret = k3rtc_fence(priv);
-			if (ret) {
-				dev_err(dev, "fence failed\n");
-				return ret;
-			}
-
-			ret = k3rtc_lock_rtc(dev, priv);
+		if (k3rtc_field_read(priv, K3RTC_GEN_WKUP_EN) != 0x0) {
+			ret = k3rtc_analog_resume(dev, priv);
 			if (ret)
 				return ret;
-
-			ret = k3rtc_fence(priv);
-			if (ret) {
-				dev_err(dev, "fence failed\n");
-				return ret;
-			}
-			/* read the IRQ source */
-			regmap_read(priv->regmap, REG_K3RTC_IRQSTATUS_RAW_SYS, &temp);
-
-			/* clear write error condition */
-			ret = k3rtc_unlock_rtc(dev, priv);
-			if (ret)
-				return ret;
-
-			regmap_write(priv->regmap, REG_K3RTC_SYNCPEND, 0x08);
-			/* Disable wakeup interrupts */
-			regmap_write(priv->regmap, REG_K3RTC_IRQENABLE_CLR_SYS, 0x1f);
-
-			ret = k3rtc_lock_rtc(dev, priv);
-			if (ret)
-				return ret;
-
-			ret = k3rtc_fence(priv);
-			if (ret) {
-				dev_err(dev, "fence failed\n");
-				return ret;
-			}
-			/* Read RTC's interrupt register to check the wake up source */
-			regmap_read(priv->regmap, REG_K3RTC_IRQSTATUS_RAW_SYS, &intr_src);
-
-			/* clear wakeup enable */
-			regmap_read(priv->regmap, REG_K3RTC_GENERAL_CTL, &temp);
-			temp = temp & (~(0xF));
-			ret = k3rtc_unlock_rtc(dev, priv);
-			if (ret)
-				return ret;
-
-			regmap_write(priv->regmap, REG_K3RTC_GENERAL_CTL, temp);
-			ret = k3rtc_lock_rtc(dev, priv);
-			if (ret)
-				return ret;
-
-			ret = k3rtc_fence(priv);
-			if (ret) {
-				dev_err(dev, "fence failed\n");
-				return ret;
-			}
-			/* clear wakeup interrupt */
-			ret = k3rtc_unlock_rtc(dev, priv);
-			if (ret)
-				return ret;
-
-			regmap_write(priv->regmap, REG_K3RTC_IRQSTATUS_SYS, intr_src);
-			ret = k3rtc_lock_rtc(dev, priv);
-			if (ret)
-				return ret;
-
-			ret = k3rtc_fence(priv);
-			if (ret) {
-				dev_err(dev, "fence failed\n");
-				return ret;
-			}
-
-			ret = k3rtc_unlock_rtc(dev, priv);
-			if (ret)
-				return ret;
-
-			k3rtc_field_write(priv, K3RTC_RELOAD_FROM_BBD, 0x1);
-			ret = k3rtc_fence(priv);
-			if (ret) {
-				dev_err(dev, "fence failed\n");
-				return ret;
-			}
-
-			ret = k3rtc_lock_rtc(dev, priv);
-			if (ret)
-				return ret;
-			}
+		}
 	}
 
 	dev_dbg(dev, "Resume complete\n");
