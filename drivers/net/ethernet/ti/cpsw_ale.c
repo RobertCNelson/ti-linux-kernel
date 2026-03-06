@@ -1714,6 +1714,7 @@ void cpsw_ale_policer_reset(struct cpsw_ale *ale)
 	for (i = 0; i < ale->params.num_policers ; i++)
 		cpsw_ale_policer_reset_entry(ale, i);
 }
+EXPORT_SYMBOL_GPL(cpsw_ale_policer_reset);
 
 /* Default classifier is to map 8 user priorities to N receive channels */
 void cpsw_ale_classifier_setup_default(struct cpsw_ale *ale, int num_rx_ch)

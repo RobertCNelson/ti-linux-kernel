@@ -991,6 +991,399 @@ static int am65_cpsw_set_coalesce(struct net_device *ndev, struct ethtool_coales
 	return am65_cpsw_set_per_queue_coalesce(ndev, 0, coal);
 }
 
+#define AM65_CPSW_FLOW_TYPE(f) ((f) & ~(FLOW_EXT | FLOW_MAC_EXT))
+
+/* rxnfc_lock must be held */
+static struct am65_cpsw_rxnfc_rule *am65_cpsw_get_rule(struct am65_cpsw_port *port,
+						       int location)
+{
+	struct am65_cpsw_rxnfc_rule *rule;
+
+	list_for_each_entry(rule, &port->rxnfc_rules, list) {
+		if (rule->location == location)
+			return rule;
+	}
+
+	return NULL;
+}
+
+/* rxnfc_lock must be held */
+static void am65_cpsw_del_rule(struct am65_cpsw_port *port,
+			       struct am65_cpsw_rxnfc_rule *rule)
+{
+	int loc;
+
+	/* reverse location as higher locations have higher priority
+	 * but ethtool expects lower locations to have higher priority
+	 */
+	loc = port->rxnfc_max - rule->location - 1;
+
+	cpsw_ale_policer_clr_entry(port->common->ale, loc,
+				   &rule->cfg);
+	list_del(&rule->list);
+	port->rxnfc_count--;
+	port->policer_in_use_bitmask &= ~BIT(rule->location);
+	kfree(rule);
+}
+
+/* rxnfc_lock must be held */
+static int am65_cpsw_add_rule(struct am65_cpsw_port *port,
+			      struct am65_cpsw_rxnfc_rule *rule)
+{
+	struct am65_cpsw_rxnfc_rule *prev = NULL, *cur;
+	int ret, loc;
+
+	/* reverse location as higher locations have higher priority
+	 * but ethtool expects lower locations to have higher priority
+	 */
+	loc = port->rxnfc_max - rule->location - 1;
+
+	ret = cpsw_ale_policer_set_entry(port->common->ale, loc,
+					 &rule->cfg);
+	if (ret)
+		return ret;
+
+	list_for_each_entry(cur, &port->rxnfc_rules, list) {
+		if (cur->location >= rule->location)
+			break;
+		prev = cur;
+	}
+
+	list_add(&rule->list, prev ? &prev->list : &port->rxnfc_rules);
+	port->rxnfc_count++;
+	port->policer_in_use_bitmask |= BIT(rule->location);
+
+	return 0;
+}
+
+#define ETHER_TYPE_FULL_MASK cpu_to_be16(FIELD_MAX(U16_MAX))
+#define VLAN_TCI_FULL_MASK ETHER_TYPE_FULL_MASK
+
+static int am65_cpsw_rxnfc_get_rule(struct am65_cpsw_port *port,
+				    struct ethtool_rxnfc *rxnfc)
+{
+	struct ethtool_rx_flow_spec *fs = &rxnfc->fs;
+	struct am65_cpsw_rxnfc_rule *rule;
+	struct cpsw_ale_policer_cfg *cfg;
+
+	mutex_lock(&port->rxnfc_lock);
+	rule = am65_cpsw_get_rule(port, fs->location);
+	if (!rule) {
+		mutex_unlock(&port->rxnfc_lock);
+		return -ENOENT;
+	}
+
+	cfg = &rule->cfg;
+
+	/* build flowspec from policer_cfg */
+	fs->flow_type = ETHER_FLOW;
+	fs->ring_cookie = cfg->thread_id;
+
+	/* clear all masks. Seems to be inverted */
+	eth_broadcast_addr(fs->m_u.ether_spec.h_dest);
+	eth_broadcast_addr(fs->m_u.ether_spec.h_source);
+	fs->m_u.ether_spec.h_proto = ETHER_TYPE_FULL_MASK;
+	fs->m_ext.vlan_tci = htons(0xFFFF);
+	fs->m_ext.vlan_etype = ETHER_TYPE_FULL_MASK;
+	fs->m_ext.data[0] = cpu_to_be32(FIELD_MAX(U32_MAX));
+	fs->m_ext.data[1] = cpu_to_be32(FIELD_MAX(U32_MAX));
+
+	if (cfg->match_flags & CPSW_ALE_POLICER_MATCH_MACDST) {
+		ether_addr_copy(fs->h_u.ether_spec.h_dest,
+				cfg->dst_addr);
+		eth_zero_addr(fs->m_u.ether_spec.h_dest);
+	}
+
+	if (cfg->match_flags & CPSW_ALE_POLICER_MATCH_MACSRC) {
+		ether_addr_copy(fs->h_u.ether_spec.h_source,
+				cfg->src_addr);
+		eth_zero_addr(fs->m_u.ether_spec.h_source);
+	}
+
+	if (cfg->match_flags & CPSW_ALE_POLICER_MATCH_OVLAN) {
+		fs->flow_type |= FLOW_EXT;
+		fs->h_ext.vlan_tci = htons(FIELD_PREP(VLAN_VID_MASK, cfg->vid)
+					   | FIELD_PREP(VLAN_PRIO_MASK, cfg->vlan_prio));
+		fs->m_ext.vlan_tci = 0;
+	}
+
+	mutex_unlock(&port->rxnfc_lock);
+
+	return 0;
+}
+
+static int am65_cpsw_rxnfc_get_all(struct am65_cpsw_port *port,
+				   struct ethtool_rxnfc *rxnfc,
+				   u32 *rule_locs)
+{
+	struct am65_cpsw_rxnfc_rule *rule;
+	int count = 0;
+
+	rxnfc->data = port->rxnfc_max;
+	mutex_lock(&port->rxnfc_lock);
+
+	list_for_each_entry(rule, &port->rxnfc_rules, list) {
+		if (count == rxnfc->rule_cnt) {
+			mutex_unlock(&port->rxnfc_lock);
+			return -EMSGSIZE;
+		}
+
+		rule_locs[count] = rule->location;
+		count++;
+	}
+
+	mutex_unlock(&port->rxnfc_lock);
+	rxnfc->rule_cnt = count;
+
+	return 0;
+}
+
+static int am65_cpsw_get_rxnfc(struct net_device *ndev,
+			       struct ethtool_rxnfc *rxnfc,
+			       u32 *rule_locs)
+{
+	struct am65_cpsw_common *common = am65_ndev_to_common(ndev);
+	struct am65_cpsw_port *port = am65_ndev_to_port(ndev);
+
+	switch (rxnfc->cmd) {
+	case ETHTOOL_GRXRINGS:
+		rxnfc->data = common->rx_ch_num_flows;
+		return 0;
+	case ETHTOOL_GRXCLSRLCNT: /* Get RX classification rule count */
+		rxnfc->rule_cnt = port->rxnfc_count;
+		rxnfc->data = port->rxnfc_max;
+		rxnfc->data |= RX_CLS_LOC_SPECIAL;
+		return 0;
+	case ETHTOOL_GRXCLSRULE: /* Get RX classification rule */
+		return am65_cpsw_rxnfc_get_rule(port, rxnfc);
+	case ETHTOOL_GRXCLSRLALL: /* Get all RX classification rules */
+		return am65_cpsw_rxnfc_get_all(port, rxnfc, rule_locs);
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+
+/* validate the rxnfc rule and convert it to policer config */
+static int am65_cpsw_rxnfc_validate(struct am65_cpsw_port *port,
+				    struct ethtool_rxnfc *rxnfc,
+				    struct cpsw_ale_policer_cfg *cfg)
+{
+	struct ethtool_rx_flow_spec *fs = &rxnfc->fs;
+	struct ethhdr *eth_mask;
+	int flow_type;
+
+	flow_type = AM65_CPSW_FLOW_TYPE(fs->flow_type);
+	memset(cfg, 0, sizeof(*cfg));
+
+	if (flow_type & FLOW_RSS)
+		return -EINVAL;
+
+	if (fs->location != RX_CLS_LOC_ANY &&
+	    fs->location >= port->rxnfc_max)
+		return -EINVAL;
+
+	if (fs->ring_cookie == RX_CLS_FLOW_DISC)
+		cfg->drop = true;
+	else if (fs->ring_cookie > AM65_CPSW_MAX_QUEUES)
+		return -EINVAL;
+
+	cfg->port_id = port->port_id;
+	cfg->thread_id = fs->ring_cookie;
+
+	switch (flow_type) {
+	case ETHER_FLOW:
+		eth_mask = &fs->m_u.ether_spec;
+
+		/* etherType matching is supported by h/w but not yet here */
+		if (eth_mask->h_proto)
+			return -EINVAL;
+
+		/* Only support source matching addresses by full mask */
+		if (is_broadcast_ether_addr(eth_mask->h_source)) {
+			cfg->match_flags |= CPSW_ALE_POLICER_MATCH_MACSRC;
+			ether_addr_copy(cfg->src_addr,
+					fs->h_u.ether_spec.h_source);
+		}
+
+		/* Only support destination matching addresses by full mask */
+		if (is_broadcast_ether_addr(eth_mask->h_dest)) {
+			cfg->match_flags |= CPSW_ALE_POLICER_MATCH_MACDST;
+			ether_addr_copy(cfg->dst_addr,
+					fs->h_u.ether_spec.h_dest);
+		}
+
+		if ((fs->flow_type & FLOW_EXT) && fs->m_ext.vlan_tci) {
+			/* Don't yet support vlan ethertype */
+			if (fs->m_ext.vlan_etype)
+				return -EINVAL;
+
+			if (fs->m_ext.vlan_tci != VLAN_TCI_FULL_MASK)
+				return -EINVAL;
+
+			cfg->vid = FIELD_GET(VLAN_VID_MASK,
+					     ntohs(fs->h_ext.vlan_tci));
+			cfg->vlan_prio = FIELD_GET(VLAN_PRIO_MASK,
+						   ntohs(fs->h_ext.vlan_tci));
+			cfg->match_flags |= CPSW_ALE_POLICER_MATCH_OVLAN;
+		}
+
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+/* rxnfc_lock must be held */
+static int am65_cpsw_policer_find_match(struct am65_cpsw_port *port,
+					struct cpsw_ale_policer_cfg *cfg)
+{
+	struct am65_cpsw_rxnfc_rule *rule;
+	int loc = -EINVAL;
+
+	list_for_each_entry(rule, &port->rxnfc_rules, list) {
+		if (!memcmp(&rule->cfg, cfg, sizeof(*cfg))) {
+			loc = rule->location;
+			break;
+		}
+	}
+
+	mutex_unlock(&port->rxnfc_lock);
+
+	return loc;
+}
+
+static int am65_cpsw_policer_find_free_location(struct am65_cpsw_port *port)
+{
+	int loc;
+
+	for (loc = 0; loc <= port->rxnfc_max; loc++) {
+		if (!(BIT(loc) & port->policer_in_use_bitmask))
+			return loc;
+	}
+
+	return -ENOMEM;
+}
+
+static int am65_cpsw_rxnfc_add_rule(struct am65_cpsw_port *port,
+				    struct ethtool_rxnfc *rxnfc)
+{
+	struct ethtool_rx_flow_spec *fs = &rxnfc->fs;
+	struct am65_cpsw_rxnfc_rule *rule;
+	struct cpsw_ale_policer_cfg cfg;
+	int location, ret;
+
+	if (am65_cpsw_rxnfc_validate(port, rxnfc, &cfg))
+		return -EINVAL;
+
+	/* need to check if similar rule is already present at another location,
+	 * if yes error out
+	 */
+	mutex_lock(&port->rxnfc_lock);
+	location = am65_cpsw_policer_find_match(port, &cfg);
+	if (location >= 0) {
+		netdev_info(port->ndev,
+			    "same rule already exists in location %d. not adding\n",
+			    location);
+		mutex_unlock(&port->rxnfc_lock);
+		return -EINVAL;
+	}
+
+	if (fs->location == RX_CLS_LOC_ANY) {
+		fs->location = am65_cpsw_policer_find_free_location(port);
+		if (fs->location < 0) {
+			netdev_info(port->ndev,
+				    "no free location found in rule table\n");
+			mutex_unlock(&port->rxnfc_lock);
+			return -ENOMEM;
+		}
+	} else {
+		if (BIT(fs->location) & port->policer_in_use_bitmask) {
+			netdev_info(port->ndev,
+				    "another rule exists in location %d. not adding\n",
+				    fs->location);
+			mutex_unlock(&port->rxnfc_lock);
+			return -EINVAL;
+		}
+	}
+
+	rule = kzalloc(sizeof(*rule), GFP_KERNEL);
+	if (!rule) {
+		mutex_unlock(&port->rxnfc_lock);
+		return -ENOMEM;
+	}
+
+	INIT_LIST_HEAD(&rule->list);
+	memcpy(&rule->cfg, &cfg, sizeof(cfg));
+	rule->location = fs->location;
+	ret = am65_cpsw_add_rule(port, rule);
+	if (ret)
+		kfree(rule);
+
+	mutex_unlock(&port->rxnfc_lock);
+	return ret;
+}
+
+static int am65_cpsw_rxnfc_del_rule(struct am65_cpsw_port *port,
+				    struct ethtool_rxnfc *rxnfc)
+{
+	struct ethtool_rx_flow_spec *fs = &rxnfc->fs;
+	struct am65_cpsw_rxnfc_rule *rule;
+
+	mutex_lock(&port->rxnfc_lock);
+	rule = am65_cpsw_get_rule(port, fs->location);
+	if (!rule) {
+		mutex_unlock(&port->rxnfc_lock);
+		return -ENOENT;
+	}
+
+	am65_cpsw_del_rule(port, rule);
+	/* rule freed in am65_cpsw_del_rule() */
+	mutex_unlock(&port->rxnfc_lock);
+
+	return 0;
+}
+
+void am65_cpsw_rxnfc_init(struct am65_cpsw_port *port)
+{
+	struct cpsw_ale *ale = port->common->ale;
+
+	mutex_init(&port->rxnfc_lock);
+	INIT_LIST_HEAD(&port->rxnfc_rules);
+	port->rxnfc_max = ale->params.num_policers;
+
+	/* disable all rules */
+	cpsw_ale_policer_reset(ale);
+}
+
+void am65_cpsw_rxnfc_cleanup(struct am65_cpsw_port *port)
+{
+	struct am65_cpsw_rxnfc_rule *rule, *tmp;
+
+	mutex_lock(&port->rxnfc_lock);
+
+	list_for_each_entry_safe(rule, tmp, &port->rxnfc_rules, list)
+		am65_cpsw_del_rule(port, rule);
+
+	mutex_unlock(&port->rxnfc_lock);
+}
+
+static int am65_cpsw_set_rxnfc(struct net_device *ndev,
+			       struct ethtool_rxnfc *rxnfc)
+{
+	struct am65_cpsw_port *port = am65_ndev_to_port(ndev);
+
+	switch (rxnfc->cmd) {
+	case ETHTOOL_SRXCLSRLINS:
+		return am65_cpsw_rxnfc_add_rule(port, rxnfc);
+	case ETHTOOL_SRXCLSRLDEL:
+		return am65_cpsw_rxnfc_del_rule(port, rxnfc);
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+
 const struct ethtool_ops am65_cpsw_ethtool_ops_slave = {
 	.begin			= am65_cpsw_ethtool_op_begin,
 	.complete		= am65_cpsw_ethtool_op_complete,
@@ -1028,4 +1421,6 @@ const struct ethtool_ops am65_cpsw_ethtool_ops_slave = {
 	.get_mm			= am65_cpsw_get_mm,
 	.set_mm			= am65_cpsw_set_mm,
 	.get_mm_stats		= am65_cpsw_get_mm_stats,
+	.get_rxnfc		= am65_cpsw_get_rxnfc,
+	.set_rxnfc		= am65_cpsw_set_rxnfc,
 };
