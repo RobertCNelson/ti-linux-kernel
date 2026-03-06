@@ -340,12 +340,6 @@ static int k3rtc_analog_resume(struct device *dev, struct ti_k3_rtc *priv)
 	if (ret)
 		return ret;
 
-	ret = k3rtc_fence(priv);
-	if (ret) {
-		dev_err(dev, "fence failed\n");
-		return ret;
-	}
-
 	ret = k3rtc_unlock_rtc(dev, priv);
 	if (ret)
 		return ret;
@@ -377,12 +371,6 @@ static int k3rtc_analog_resume(struct device *dev, struct ti_k3_rtc *priv)
 	if (ret)
 		return ret;
 
-	ret = k3rtc_fence(priv);
-	if (ret) {
-		dev_err(dev, "fence failed\n");
-		return ret;
-	}
-
 	ret = k3rtc_unlock_rtc(dev, priv);
 	if (ret)
 		return ret;
@@ -403,12 +391,6 @@ static int k3rtc_analog_resume(struct device *dev, struct ti_k3_rtc *priv)
 	ret = k3rtc_lock_rtc(dev, priv);
 	if (ret)
 		return ret;
-
-	ret = k3rtc_fence(priv);
-	if (ret) {
-		dev_err(dev, "fence failed\n");
-		return ret;
-	}
 
 	ret = k3rtc_unlock_rtc(dev, priv);
 	if (ret)
@@ -738,10 +720,6 @@ static irqreturn_t ti_k3_rtc_interrupt(s32 irq, void *dev_id)
 			if (ret)
 				return IRQ_NONE;
 
-			ret = k3rtc_fence(priv);
-			if (ret)
-				return IRQ_NONE;
-
 			ret = k3rtc_unlock_rtc(dev, priv);
 			if (ret)
 				return IRQ_NONE;
@@ -750,10 +728,6 @@ static irqreturn_t ti_k3_rtc_interrupt(s32 irq, void *dev_id)
 			regmap_write(priv->regmap, REG_K3RTC_SYNCPEND, 0x08);
 
 			ret = k3rtc_lock_rtc(dev, priv);
-			if (ret)
-				return IRQ_NONE;
-
-			ret = k3rtc_fence(priv);
 			if (ret)
 				return IRQ_NONE;
 
@@ -930,11 +904,6 @@ static int ti_k3_rtc_analog_config(struct device *dev, struct ti_k3_rtc *priv)
 	ret = k3rtc_lock_rtc(dev, priv);
 	if (ret) {
 		dev_err(dev, "Lock Failed (%d)!\n", ret);
-		return ret;
-	}
-	ret = k3rtc_fence(priv);
-	if (ret) {
-		dev_err(dev, "Fence sync Failed (%d)!\n", ret);
 		return ret;
 	}
 
