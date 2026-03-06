@@ -1766,6 +1766,86 @@ void cpsw_ale_classifier_setup_default(struct cpsw_ale *ale, int num_rx_ch)
 						   1);
 	}
 }
+
+#define HOST_PORT_NUM 0
+
+/* Clear Policer and associated ALE table entries */
+void cpsw_ale_policer_clr_entry(struct cpsw_ale *ale, u32 policer_idx,
+				struct cpsw_ale_policer_cfg *cfg)
+{
+	cpsw_ale_policer_reset_entry(ale, policer_idx);
+
+	/* We do not delete ALE entries that were added in set_entry
+	 * as they might still be in use by the port e.g. VLAN id
+	 * or port MAC address
+	 */
+
+	/* clear BLOCKED in case we set it */
+	if ((cfg->match_flags & CPSW_ALE_POLICER_MATCH_MACSRC) && cfg->drop)
+		cpsw_ale_add_ucast(ale, cfg->src_addr, HOST_PORT_NUM, 0, 0);
+
+	if ((cfg->match_flags & CPSW_ALE_POLICER_MATCH_MACDST) && cfg->drop)
+		cpsw_ale_add_ucast(ale, cfg->dst_addr, HOST_PORT_NUM, 0, 0);
+}
+EXPORT_SYMBOL_GPL(cpsw_ale_policer_clr_entry);
+
+int cpsw_ale_policer_set_entry(struct cpsw_ale *ale, u32 policer_idx,
+			       struct cpsw_ale_policer_cfg *cfg)
+{
+	int ale_idx;
+	u16 ale_flags = cfg->drop ? ALE_BLOCKED : 0;
+
+	/* A single policer can support multiple match types simultaneously
+	 * There can be only one ALE entry per address
+	 */
+	cpsw_ale_policer_reset_entry(ale, policer_idx);
+	cpsw_ale_policer_read_idx(ale, policer_idx);
+
+	if (cfg->match_flags & CPSW_ALE_POLICER_MATCH_MACSRC) {
+		ale_idx = cpsw_ale_add_ucast(ale, cfg->src_addr, HOST_PORT_NUM,
+					     ale_flags, 0);
+		if (ale_idx < 0)
+			return -ENOENT;
+
+		/* update policer entry */
+		regmap_field_write(ale->fields[POL_SRC_INDEX], ale_idx);
+		regmap_field_write(ale->fields[POL_SRC_MEN], 1);
+	}
+
+	if (cfg->match_flags & CPSW_ALE_POLICER_MATCH_MACDST) {
+		ale_idx = cpsw_ale_add_ucast(ale, cfg->dst_addr, HOST_PORT_NUM,
+					     ale_flags, 0);
+		if (ale_idx < 0)
+			return -ENOENT;
+
+		/* update policer entry */
+		regmap_field_write(ale->fields[POL_DST_INDEX], ale_idx);
+		regmap_field_write(ale->fields[POL_DST_MEN], 1);
+	}
+
+	if (cfg->match_flags & CPSW_ALE_POLICER_MATCH_OVLAN) {
+		/* VLAN ID based flow routing not yet working,
+		 * only PCP matching for now
+		 */
+		if (cfg->vid > 0)
+			return -EINVAL;
+
+		regmap_field_write(ale->fields[POL_PRI_VAL], cfg->vlan_prio);
+		regmap_field_write(ale->fields[POL_PRI_MEN], 1);
+	}
+
+	cpsw_ale_policer_write_idx(ale, policer_idx);
+
+	/* Map to thread id provided by the config */
+	if (!cfg->drop) {
+		cpsw_ale_policer_thread_idx_enable(ale, policer_idx,
+						   cfg->thread_id, true);
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(cpsw_ale_policer_set_entry);
+
 EXPORT_SYMBOL_GPL(cpsw_ale_classifier_setup_default);
 
 MODULE_LICENSE("GPL");
