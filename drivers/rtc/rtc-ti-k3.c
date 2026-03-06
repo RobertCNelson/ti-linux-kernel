@@ -13,6 +13,7 @@
 #include <linux/mutex.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
+#include <linux/reboot.h>
 #include <linux/sys_soc.h>
 #include <linux/property.h>
 #include <linux/regmap.h>
@@ -1003,6 +1004,22 @@ static int k3rtc_get_vbusclk(struct device *dev, struct ti_k3_rtc *priv)
 	return 0;
 }
 
+static int ti_k3_rtc_power_off_prepare(struct sys_off_data *data)
+{
+	struct ti_k3_rtc *priv = data->cb_data;
+	struct device *dev = &priv->rtc_dev->dev;
+	int ret;
+
+	dev_dbg(dev, "Preparing RTC for system poweroff\n");
+
+	ret = k3rtc_analog_suspend(dev, priv);
+	if (ret)
+		return NOTIFY_BAD;
+
+	dev_dbg(dev, "RTC configured for poweroff successfully\n");
+	return NOTIFY_DONE;
+}
+
 static int ti_k3_rtc_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -1107,6 +1124,19 @@ static int ti_k3_rtc_probe(struct platform_device *pdev)
 	ret = devm_rtc_register_device(priv->rtc_dev);
 	if (ret)
 		return ret;
+
+	/* Register power-off prepare handler (only for AM62L) */
+	if (priv->has_analog_block) {
+		ret = devm_register_sys_off_handler(dev,
+						    SYS_OFF_MODE_POWER_OFF_PREPARE,
+						    SYS_OFF_PRIO_DEFAULT,
+						    ti_k3_rtc_power_off_prepare,
+						    priv);
+
+		/* Non-fatal, continue with probe */
+		if (ret)
+			dev_warn(dev, "Failed to register poweroff prepare handler: %d\n", ret);
+	}
 
 	return devm_rtc_nvmem_register(priv->rtc_dev, &ti_k3_rtc_nvmem_config);
 }
