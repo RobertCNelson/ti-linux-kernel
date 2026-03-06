@@ -2936,9 +2936,6 @@ static int am65_cpsw_nuss_init_rx_chns(struct am65_cpsw_common *common)
 		irq_set_affinity_hint(flow->irq, get_cpu_mask(cpumask_first(cpu_present_mask)));
 	}
 
-	/* setup classifier to route priorities to flows */
-	cpsw_ale_classifier_setup_default(common->ale, common->rx_ch_num_flows);
-
 	return 0;
 
 err_request_irq:
