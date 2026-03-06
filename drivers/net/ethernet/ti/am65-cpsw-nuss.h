@@ -217,6 +217,7 @@ struct am65_cpsw_common {
 #endif
 	/* only for suspend/resume context restore */
 	u32			*ale_context;
+	u32			*policer_context;
 	/* XDP Zero Copy */
 	unsigned long		*xdp_zc_queues;
 	int			xsk_port_id[AM65_CPSW_MAX_QUEUES];
