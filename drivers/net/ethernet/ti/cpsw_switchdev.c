@@ -191,7 +191,7 @@ static int cpsw_port_vlan_add(struct cpsw_priv *priv, bool untag, bool pvid,
 
 	ret = cpsw_ale_vlan_add_modify(cpsw->ale, vid, port_mask, untag_mask,
 				       reg_mcast_mask, unreg_mcast_mask);
-	if (ret) {
+	if (ret < 0) {
 		dev_err(priv->dev, "Unable to add vlan\n");
 		return ret;
 	}
@@ -200,13 +200,13 @@ static int cpsw_port_vlan_add(struct cpsw_priv *priv, bool untag, bool pvid,
 		cpsw_ale_add_ucast(cpsw->ale, priv->mac_addr,
 				   HOST_PORT_NUM, ALE_VLAN, vid);
 	if (!pvid)
-		return ret;
+		return 0;
 
 	cpsw_set_pvid(priv, vid, 0, 0);
 
 	dev_dbg(priv->dev, "VID add: %s: vid:%u ports:%X\n",
 		priv->ndev->name, vid, port_mask);
-	return ret;
+	return 0;
 }
 
 static int cpsw_port_vlan_del(struct cpsw_priv *priv, u16 vid,

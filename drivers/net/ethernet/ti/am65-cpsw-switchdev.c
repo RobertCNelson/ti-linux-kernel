@@ -175,7 +175,7 @@ static int am65_cpsw_port_vlan_add(struct am65_cpsw_port *port, bool untag, bool
 
 	ret = cpsw_ale_vlan_add_modify(cpsw->ale, vid, port_mask, untag_mask,
 				       reg_mcast_mask, unreg_mcast_mask);
-	if (ret) {
+	if (ret < 0) {
 		netdev_err(port->ndev, "Unable to add vlan\n");
 		return ret;
 	}
@@ -184,14 +184,14 @@ static int am65_cpsw_port_vlan_add(struct am65_cpsw_port *port, bool untag, bool
 		cpsw_ale_add_ucast(cpsw->ale, port->slave.mac_addr,
 				   HOST_PORT_NUM, ALE_VLAN | ALE_SECURE, vid);
 	if (!pvid)
-		return ret;
+		return 0;
 
 	am65_cpsw_set_pvid(port, vid, 0, 0);
 
 	netdev_dbg(port->ndev, "VID add: %s: vid:%u ports:%X\n",
 		   port->ndev->name, vid, port_mask);
 
-	return ret;
+	return 0;
 }
 
 static int am65_cpsw_port_vlan_del(struct am65_cpsw_port *port, u16 vid,
