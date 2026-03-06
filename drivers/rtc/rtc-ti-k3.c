@@ -56,6 +56,9 @@
 #define K3RTC_MIN_OFFSET		(-277761)
 #define K3RTC_MAX_OFFSET		(277778)
 
+/* Value for SW_OFF bit */
+#define K3RTC_SW_OFF_VAL		BIT(17)
+
 static const struct regmap_config ti_k3_rtc_regmap_config = {
 	.name = "peripheral-registers",
 	.reg_bits = 32,
@@ -73,6 +76,7 @@ enum ti_k3_rtc_fields {
 	K3RTC_UNLOCK,
 	K3RTC_CNT_FMODE,
 	K3RTC_PEND,
+	K3RTC_WRT_ERR,
 	K3RTC_RELOAD_FROM_BBD,
 	K3RTC_COMP,
 
@@ -89,6 +93,7 @@ enum ti_k3_rtc_fields {
 	K3RTC_IRQ_ENABLE_CLR_ALT,
 	K3RTC_IRQ_STATUS_RAW_ALL,
 	K3RTC_IRQ_STATUS_ALL,
+	K3RTC_IRQ_ENABLE_CLR_ALL,
 
 	K3RTC_AUX_32K_EN,
 	K3RTC_GEN_WKUP_POL,
@@ -109,6 +114,7 @@ static const struct reg_field ti_rtc_reg_fields[] = {
 	[K3RTC_UNLOCK] = REG_FIELD(REG_K3RTC_GENERAL_CTL, 23, 23),
 	[K3RTC_CNT_FMODE] = REG_FIELD(REG_K3RTC_GENERAL_CTL, 24, 25),
 	[K3RTC_PEND] = REG_FIELD(REG_K3RTC_SYNCPEND, 0, 1),
+	[K3RTC_WRT_ERR] = REG_FIELD(REG_K3RTC_SYNCPEND, 3, 3),
 	[K3RTC_RELOAD_FROM_BBD] = REG_FIELD(REG_K3RTC_SYNCPEND, 31, 31),
 	[K3RTC_COMP] = REG_FIELD(REG_K3RTC_COMP, 0, 31),
 
@@ -127,6 +133,7 @@ static const struct reg_field ti_rtc_reg_fields[] = {
 
 	[K3RTC_IRQ_STATUS_RAW_ALL] = REG_FIELD(REG_K3RTC_IRQSTATUS_RAW_SYS, 0, 4),
 	[K3RTC_IRQ_STATUS_ALL] = REG_FIELD(REG_K3RTC_IRQSTATUS_SYS, 0, 4),
+	[K3RTC_IRQ_ENABLE_CLR_ALL] = REG_FIELD(REG_K3RTC_IRQENABLE_CLR_SYS, 0, 5),
 
 	[K3RTC_AUX_32K_EN] = REG_FIELD(REG_K3RTC_GENERAL_CTL, 22, 22),
 	[K3RTC_GEN_WKUP_POL] = REG_FIELD(REG_K3RTC_GENERAL_CTL, 4, 7),
@@ -262,7 +269,6 @@ static int k3rtc_lock_rtc(struct device *dev, struct ti_k3_rtc *priv)
 
 static int k3rtc_analog_suspend(struct device *dev, struct ti_k3_rtc *priv)
 {
-	u32 temp;
 	int ret;
 
 	guard(mutex)(&priv->mutex_lock);
@@ -271,13 +277,20 @@ static int k3rtc_analog_suspend(struct device *dev, struct ti_k3_rtc *priv)
 	if (ret)
 		return ret;
 
-	regmap_read(priv->regmap, REG_K3RTC_GENERAL_CTL, &temp);
-	temp |= 0x10040;
-	regmap_write(priv->regmap, REG_K3RTC_GENERAL_CTL, temp);
+	/* Enable PMIC signal to transition */
+	k3rtc_field_write(priv, K3RTC_GEN_PWR_OFF, 1);
 
-	regmap_read(priv->regmap, REG_K3RTC_IRQENABLE_SET_SYS, &temp);
-	temp |= 0x1C;
-	regmap_write(priv->regmap, REG_K3RTC_IRQENABLE_SET_SYS, temp);
+	ret = k3rtc_fence(priv);
+	if (ret) {
+		dev_err(dev, "fence failed\n");
+		return ret;
+	}
+
+	/* Configure wakeup polarity pin2-high, pin0,1-low */
+	k3rtc_field_write(priv, K3RTC_GEN_WKUP_POL, 0x4U);
+
+	/* Enable wakeup interrupts for external pins 0, 1 and 2 */
+	k3rtc_field_write(priv, K3RTC_IRQ_ENABLE_WKUP, 0xE);
 
 	ret = k3rtc_lock_rtc(dev, priv);
 	if (ret)
@@ -287,9 +300,17 @@ static int k3rtc_analog_suspend(struct device *dev, struct ti_k3_rtc *priv)
 	if (ret)
 		return ret;
 
-	regmap_read(priv->regmap, REG_K3RTC_GENERAL_CTL, &temp);
-	temp |= 0x20007;
-	regmap_write(priv->regmap, REG_K3RTC_GENERAL_CTL, temp);
+	/* Enable wakeup functionality on external pins 0, 1, 2 */
+	k3rtc_field_write(priv, K3RTC_GEN_WKUP_EN, 0x7);
+
+	ret = k3rtc_fence(priv);
+	if (ret) {
+		dev_err(dev, "fence failed\n");
+		return ret;
+	}
+
+	/* Enable software poweroff */
+	k3rtc_field_write(priv, K3RTC_GEN_SW_OFF, 1);
 
 	ret = k3rtc_fence(priv);
 	if (ret) {
@@ -304,12 +325,10 @@ static int k3rtc_analog_resume(struct device *dev, struct ti_k3_rtc *priv)
 {
 	int ret;
 	u32 intr_src;
-	u32 temp;
 
-	/* Explicitly clear SW_OFF on rtc_cd side */
-	regmap_read(priv->regmap, REG_K3RTC_GENERAL_CTL, &temp);
-	temp = temp & (~(1 << 17));
-	regmap_write(priv->regmap, REG_K3RTC_GENERAL_CTL, temp);
+	/* Explicitly clear SW_OFF bit - forced write required */
+	regmap_write_bits(priv->regmap, REG_K3RTC_GENERAL_CTL,
+		K3RTC_SW_OFF_VAL, 0);
 
 	ret = k3rtc_fence(priv);
 	if (ret) {
@@ -326,17 +345,16 @@ static int k3rtc_analog_resume(struct device *dev, struct ti_k3_rtc *priv)
 		dev_err(dev, "fence failed\n");
 		return ret;
 	}
-	/* read the IRQ source */
-	regmap_read(priv->regmap, REG_K3RTC_IRQSTATUS_RAW_SYS, &temp);
 
-	/* clear write error condition */
 	ret = k3rtc_unlock_rtc(dev, priv);
 	if (ret)
 		return ret;
 
-	regmap_write(priv->regmap, REG_K3RTC_SYNCPEND, 0x08);
-	/* Disable wakeup interrupts */
-	regmap_write(priv->regmap, REG_K3RTC_IRQENABLE_CLR_SYS, 0x1f);
+	/* Clear write error condition */
+	k3rtc_field_write(priv, K3RTC_WRT_ERR, 0x1);
+
+	/* Disable all wakeup-related interrupts */
+	k3rtc_field_write(priv, K3RTC_IRQ_ENABLE_CLR_ALL, 0x1F);
 
 	ret = k3rtc_lock_rtc(dev, priv);
 	if (ret)
@@ -347,32 +365,38 @@ static int k3rtc_analog_resume(struct device *dev, struct ti_k3_rtc *priv)
 		dev_err(dev, "fence failed\n");
 		return ret;
 	}
+
+	ret = k3rtc_unlock_rtc(dev, priv);
+	if (ret)
+		return ret;
+
+	/* Clear wakeup enable bits */
+	k3rtc_field_write(priv, K3RTC_GEN_WKUP_EN, 0);
+
+	ret = k3rtc_lock_rtc(dev, priv);
+	if (ret)
+		return ret;
+
+	ret = k3rtc_fence(priv);
+	if (ret) {
+		dev_err(dev, "fence failed\n");
+		return ret;
+	}
+
+	ret = k3rtc_unlock_rtc(dev, priv);
+	if (ret)
+		return ret;
+
 	/* Read RTC's interrupt register to check the wake up source */
-	regmap_read(priv->regmap, REG_K3RTC_IRQSTATUS_RAW_SYS, &intr_src);
+	intr_src = k3rtc_field_read(priv, K3RTC_IRQ_STATUS_RAW_ALL);
 
-	/* clear wakeup enable */
-	regmap_read(priv->regmap, REG_K3RTC_GENERAL_CTL, &temp);
-	temp = temp & (~(0xF));
-	ret = k3rtc_unlock_rtc(dev, priv);
-	if (ret)
-		return ret;
+	/*
+	 * Write the corresponding interrupt to clear status reg.
+	 * We cannot use a field operation here due to a potential race between
+	 * 32k domain and vbus domain.
+	 */
+	k3rtc_field_write(priv, K3RTC_IRQ_STATUS_ALL, intr_src);
 
-	regmap_write(priv->regmap, REG_K3RTC_GENERAL_CTL, temp);
-	ret = k3rtc_lock_rtc(dev, priv);
-	if (ret)
-		return ret;
-
-	ret = k3rtc_fence(priv);
-	if (ret) {
-		dev_err(dev, "fence failed\n");
-		return ret;
-	}
-	/* clear wakeup interrupt */
-	ret = k3rtc_unlock_rtc(dev, priv);
-	if (ret)
-		return ret;
-
-	regmap_write(priv->regmap, REG_K3RTC_IRQSTATUS_SYS, intr_src);
 	ret = k3rtc_lock_rtc(dev, priv);
 	if (ret)
 		return ret;
@@ -387,7 +411,12 @@ static int k3rtc_analog_resume(struct device *dev, struct ti_k3_rtc *priv)
 	if (ret)
 		return ret;
 
+	/*
+	 * Force the 32k status to be reloaded back in to ensure status is
+	 * reflected back correctly.
+	 */
 	k3rtc_field_write(priv, K3RTC_RELOAD_FROM_BBD, 0x1);
+
 	ret = k3rtc_fence(priv);
 	if (ret) {
 		dev_err(dev, "fence failed\n");
