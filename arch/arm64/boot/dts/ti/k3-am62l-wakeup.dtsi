@@ -138,6 +138,11 @@
 		assigned-clock-parents = <&scmi_clk 487>;
 		power-domains = <&scmi_pds 59>;
 		wakeup-source;
+		gpio-controller;
+		#gpio-cells = <2>;
+		ngpios = <3>;  /* SoC supports 3 GPIOs, board may use fewer */
+		interrupt-controller;
+		#interrupt-cells = <1>;
 	};
 
 	wkup_conf: bus@43000000 {

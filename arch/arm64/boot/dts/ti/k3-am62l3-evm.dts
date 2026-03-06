@@ -31,6 +31,36 @@
 		bootph-all;
 	};
 
+	rtc_gpio0 {
+		compatible = "gpio-keys";
+		button-rtc0 {
+			label = "rtc_gpio_0";
+			wakeup-source;
+			linux,code = <KEY_WAKEUP>;
+			gpios = <&wkup_rtc0 0 GPIO_ACTIVE_LOW>;
+		};
+	};
+
+	rtc_gpio1 {
+		compatible = "gpio-keys";
+		button-rtc1 {
+			label = "rtc_gpio_1";
+			wakeup-source;
+			linux,code = <KEY_WAKEUP>;
+			gpios = <&wkup_rtc0 1 GPIO_ACTIVE_LOW>;
+		};
+	};
+
+	rtc_gpio2 {
+		compatible = "gpio-keys";
+		button-rtc2 {
+			label = "rtc_gpio_2";
+			wakeup-source;
+			linux,code = <KEY_WAKEUP>;
+			gpios = <&wkup_rtc0 2 GPIO_ACTIVE_HIGH>;
+		};
+	};
+
 	gpio_keys: gpio-keys {
 		compatible = "gpio-keys";
 		autorepeat;
@@ -60,6 +90,7 @@
 			default-state = "on";
 		};
 	};
+
 
 	thermal-zones {
 		wkup0-thermal {
