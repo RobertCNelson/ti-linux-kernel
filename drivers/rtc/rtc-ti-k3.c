@@ -267,6 +267,19 @@ static int k3rtc_lock_rtc(struct device *dev, struct ti_k3_rtc *priv)
 	return ret;
 }
 
+/*
+ * Check if RTC hardware is already configured and running by examining
+ * the general control register. If RTC remained powered through
+ * a reset or low power mode, power off bit will be set.
+ */
+static bool k3rtc_is_rtc_already_configured(struct ti_k3_rtc *priv)
+{
+	if (WARN_ON(!priv || !priv->regmap))
+		return false;
+
+	return (k3rtc_field_read(priv, K3RTC_GEN_PWR_OFF) != 0x0);
+}
+
 static int k3rtc_analog_suspend(struct device *dev, struct ti_k3_rtc *priv)
 {
 	int ret;
@@ -415,6 +428,23 @@ static int k3rtc_analog_resume(struct device *dev, struct ti_k3_rtc *priv)
 	return 0;
 }
 
+/*
+ * Clean up RTC poweroff configuration when RTC is already running.
+ * This clears SW_OFF, wakeup enables, and interrupt status without
+ * reinitializing the entire RTC hardware.
+ */
+static int k3rtc_cleanup_poweroff_config(struct device *dev, struct ti_k3_rtc *priv)
+{
+	int ret = 0;
+
+	guard(mutex)(&priv->mutex_lock);
+
+	ret = k3rtc_analog_resume(dev, priv);
+	if (ret)
+		dev_err(dev, "RTC cleanup failed: %d\n", ret);
+
+	return ret;
+}
 
 /*
  * This is the list of SoCs affected by TI's i2327 errata causing the RTC
@@ -979,6 +1009,7 @@ static int ti_k3_rtc_probe(struct platform_device *pdev)
 	const struct k3_rtc_soc_data *soc_data;
 	struct ti_k3_rtc *priv;
 	void __iomem *rtc_base;
+	bool is_rtc_already_configured = false;
 	int ret;
 
 	soc_data = device_get_match_data(&pdev->dev);
@@ -1012,8 +1043,23 @@ static int ti_k3_rtc_probe(struct platform_device *pdev)
 	/* Initialize sync timeout value, gets updated after configuring analog IP */
 	priv->sync_timeout_us = (u32)3 * 1000 * 1000;
 
-	if (priv->has_analog_block)
-		ti_k3_rtc_analog_config(dev, priv);
+	/*
+	 * Detect if RTC hardware is already configured and running.
+	 * If yes, skip full hardware initialization and only clean up
+	 * any poweroff-related configuration.
+	 */
+	if (priv->has_analog_block) {
+		is_rtc_already_configured = k3rtc_is_rtc_already_configured(priv);
+
+		/* Only configure analog block on normal boot, skip if RTC already configured */
+		if (is_rtc_already_configured) {
+			dev_dbg(dev, "RTC already configured, cleaning up poweroff state\n");
+			ret = k3rtc_cleanup_poweroff_config(dev, priv);
+			if (ret)
+				return ret;
+		} else
+			ti_k3_rtc_analog_config(dev, priv);
+	}
 
 	ret = k3rtc_get_32kclk(dev, priv);
 	if (ret)
@@ -1046,9 +1092,12 @@ static int ti_k3_rtc_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, priv);
 
-	ret = k3rtc_configure(dev);
-	if (ret)
-		return ret;
+	/* Only configure RTC registers on normal boot, skip if already configured */
+	if (!is_rtc_already_configured) {
+		ret = k3rtc_configure(dev);
+		if (ret)
+			return ret;
+	}
 
 	if (device_property_present(dev, "wakeup-source"))
 		device_init_wakeup(dev, true);
