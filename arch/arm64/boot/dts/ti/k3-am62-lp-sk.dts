@@ -321,7 +321,7 @@
 			};
 
 			partition@2000000 {
-				label = "ospi_.rootfs";
+				label = "ospi.rootfs";
 				reg = <0x2000000 0x5fc0000>;
 			};
 
