@@ -16,7 +16,6 @@
 &{/} {
 	display {
 		compatible = "microtips,mf-101hiebcaf0", "panel-simple";
-
 		/*
 		* Note that the OLDI TX 0 transmits the odd set of pixels
 		* while the OLDI TX 1 transmits the even set. This is a
@@ -58,6 +57,7 @@
 &oldi0_dss0 {
 	status = "okay";
 	ti,companion-oldi = <&oldi1_dss0>;
+	ti,oldi-io-ctrl = <&dss_oldi_io_ctrl>;
 };
 
 &oldi1_dss0 {
@@ -66,45 +66,27 @@
 	ti,companion-oldi = <&oldi0_dss0>;
 };
 
-&oldi0_dss0_ports {
-	#address-cells = <1>;
-	#size-cells = <0>;
-
-	port@0 {
-		reg = <0>;
-
-		oldi0_dss0_in: endpoint {
-			remote-endpoint = <&dss0_dpi0_out0>;
-		};
-	};
-
-	port@1 {
-		reg = <1>;
-
-		oldi0_dss0_out: endpoint {
-			remote-endpoint = <&lcd_in0>;
-		};
+&oldi0_dss0_port0 {
+	oldi0_dss0_in: endpoint {
+		remote-endpoint = <&dss0_dpi0_out0>;
 	};
 };
 
-&oldi1_dss0_ports {
-	#address-cells = <1>;
-	#size-cells = <0>;
-
-	port@0 {
-		reg = <0>;
-
-		oldi1_dss0_in: endpoint {
-			remote-endpoint = <&dss0_dpi0_out1>;
-		};
+&oldi0_dss0_port1 {
+	oldi0_dss0_out: endpoint {
+		remote-endpoint = <&lcd_in0>;
 	};
+};
 
-	port@1 {
-		reg = <1>;
+&oldi1_dss0_port0 {
+	oldi1_dss0_in: endpoint {
+		remote-endpoint = <&dss0_dpi0_out1>;
+	};
+};
 
-		oldi1_dss0_out: endpoint {
-			remote-endpoint = <&lcd_in1>;
-		};
+&oldi1_dss0_port1 {
+	oldi1_dss0_out: endpoint {
+		remote-endpoint = <&lcd_in1>;
 	};
 };
 

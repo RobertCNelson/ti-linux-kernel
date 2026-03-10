@@ -1151,18 +1151,39 @@
 				reg = <0>;
 				clocks = <&k3_clks 186 0>;
 				clock-names = "serial";
-				ti,oldi-io-ctrl = <&dss_oldi_io_ctrl>;
 				status = "disabled";
 
 				oldi0_dss0_ports: ports {
+					#address-cells = <1>;
+					#size-cells = <0>;
+
+					oldi0_dss0_port0: port@0 {
+						reg = <0>;
+					};
+
+					oldi0_dss0_port1: port@1 {
+						reg = <1>;
+					};
 				};
 			};
 
 			oldi1_dss0: oldi@1 {
 				reg = <1>;
+				clocks = <&k3_clks 186 0>;
+				clock-names = "serial";
 				status = "disabled";
 
 				oldi1_dss0_ports: ports {
+					#address-cells = <1>;
+					#size-cells = <0>;
+
+					oldi1_dss0_port0: port@0 {
+						reg = <0>;
+					};
+
+					oldi1_dss0_port1: port@1 {
+						reg = <1>;
+					};
 				};
 			};
 		};
@@ -1203,10 +1224,19 @@
 				reg = <1>;
 				clocks = <&k3_clks 232 0>;
 				clock-names = "serial";
-				ti,oldi-io-ctrl = <&dss_oldi_io_ctrl>;
 				status = "disabled";
 
 				oldi1_dss1_ports: ports {
+					#address-cells = <1>;
+					#size-cells = <0>;
+
+					oldi1_dss1_port0: port@0 {
+						reg = <0>;
+					};
+
+					oldi1_dss1_port1: port@1 {
+						reg = <1>;
+					};
 				};
 			};
 		};
