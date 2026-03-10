@@ -1124,12 +1124,6 @@ static irqreturn_t ti_k3_rtc_interrupt(s32 irq, void *dev_id)
 		return IRQ_NONE;
 	}
 
-	if (priv->has_analog_block) {
-		ret = k3rtc_unlock_rtc(dev, priv);
-		if (ret)
-			return IRQ_NONE;
-	}
-
 	/*
 	 * Force the 32k status to be reloaded back in to ensure status is
 	 * reflected back correctly.
