@@ -215,6 +215,7 @@ dtb-$(CONFIG_ARCH_K3) += k3-j722s-evm-csi2-quad-tevi-ov5640.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j722s-evm-fpdlink-fusion.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j722s-evm-fpdlink-iv-fusion.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-j722s-evm-v3link-fusion.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-j722s-evm-dsi-rpi-7inch-panel.dtbo
 
 # Boards with J784s4 SoC
 dtb-$(CONFIG_ARCH_K3) += k3-am69-sk.dtb
@@ -394,6 +395,8 @@ k3-j722s-evm-fpdlink-iv-fusion-dtbs := k3-j722s-evm.dtb \
 	k3-j722s-evm-fpdlink-iv-fusion.dtbo
 k3-j722s-evm-v3link-fusion-dtbs := k3-j722s-evm.dtb \
 	k3-j722s-evm-v3link-fusion.dtbo
+k3-j722s-evm-dsi-rpi-7inch-panel-dtbs := k3-j722s-evm.dtb \
+	k3-j722s-evm-dsi-rpi-7inch-panel.dtbo
 k3-j742s2-evm-ethfw-dtbs := k3-j742s2-evm.dtb \
 	k3-j742s2-evm-ethfw.dtbo
 k3-j742s2-evm-mcspi-loopback-dtbs := k3-j742s2-evm.dtb \
@@ -490,6 +493,7 @@ dtb- += k3-am625-beagleplay-csi2-ov5640.dtb \
 	k3-j722s-evm-fpdlink-fusion.dtb \
 	k3-j722s-evm-fpdlink-iv-fusion.dtb \
 	k3-j722s-evm-v3link-fusion.dtb \
+	k3-j722s-evm-dsi-rpi-7inch-panel.dtb \
 	k3-j742s2-evm-ethfw.dtb \
 	k3-j742s2-evm-usb0-type-a.dtb \
 	k3-j742s2-evm-mcspi-loopback.dtb \
@@ -542,3 +546,31 @@ dtb-$(CONFIG_ARCH_K3) += k3-v3link-imx219-0-0.dtbo \
 
 # Enable support for device-tree overlays
 DTC_FLAGS := -@
+DTC_FLAGS_k3-am625-beagleplay += -@
+DTC_FLAGS_k3-am625-phyboard-lyra-rdk += -@
+DTC_FLAGS_k3-am62a7-phyboard-lyra-rdk += -@
+DTC_FLAGS_k3-am625-sk += -@
+DTC_FLAGS_k3-am62-lp-sk += -@
+DTC_FLAGS_k3-am62a7-sk += -@
+DTC_FLAGS_k3-am62p5-sk += -@
+DTC_FLAGS_k3-am642-evm += -@
+DTC_FLAGS_k3-am642-phyboard-electra-rdk += -@
+DTC_FLAGS_k3-am642-tqma64xxl-mbax4xxl += -@
+DTC_FLAGS_k3-am6548-iot2050-advanced-m2 += -@
+DTC_FLAGS_k3-am68-sk-base-board += -@
+DTC_FLAGS_k3-am68-sk-v3link-fusion += -@
+DTC_FLAGS_k3-am69-sk += -@
+DTC_FLAGS_k3-j7200-common-proc-board += -@
+DTC_FLAGS_k3-j721e-beagleboneai64 += -@
+DTC_FLAGS_k3-j721e-evm-fusion += -@
+DTC_FLAGS_k3-j721e-common-proc-board += -@
+DTC_FLAGS_k3-j721e-evm-pcie0-ep += -@
+DTC_FLAGS_k3-j721e-evm-ub954 += -@
+DTC_FLAGS_k3-j721e-sk += -@
+DTC_FLAGS_k3-j721e-sk-fpdlink-fusion += -@
+DTC_FLAGS_k3-j721s2-common-proc-board += -@
+DTC_FLAGS_k3-j721s2-evm-fusion += -@
+DTC_FLAGS_k3-j721s2-evm-ub954 += -@
+DTC_FLAGS_k3-j722s-evm += -@
+DTC_FLAGS_k3-j784s4-evm += -@
+DTC_FLAGS_k3-j742s2-evm += -@
