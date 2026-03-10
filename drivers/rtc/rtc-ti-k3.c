@@ -1515,6 +1515,14 @@ static int __maybe_unused ti_k3_rtc_resume(struct device *dev)
 			if (ret)
 				return ret;
 		}
+	} else if (k3rtc_check_unlocked(priv)) {
+
+		guard(mutex)(&priv->mutex_lock);
+
+		/* RTC locked implies low power mode exit where RTC loses context */
+		ret = k3rtc_configure(dev);
+		if (ret)
+			return ret;
 	}
 
 	dev_dbg(dev, "Resume complete\n");
