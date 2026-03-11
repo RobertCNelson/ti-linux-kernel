@@ -1236,12 +1236,16 @@ enum netdev_tx icssg_ndo_start_xmit(struct sk_buff *skb, struct net_device *ndev
 	dst_tag_id = emac->port_id | (q_idx << 8);
 
 	if (prueth->is_hsr_offload_mode &&
-	    (ndev->features & NETIF_F_HW_HSR_DUP))
-		dst_tag_id = PRUETH_UNDIRECTED_PKT_DST_TAG;
+	    (ndev->features & NETIF_F_HW_HSR_DUP)) {
+		if (!(hsr_skb_has_port(skb)))
+			dst_tag_id = PRUETH_UNDIRECTED_PKT_DST_TAG;
+	}
 
 	if (prueth->is_hsr_offload_mode &&
-	    (ndev->features & NETIF_F_HW_HSR_TAG_INS))
-		epib[1] |= PRUETH_UNDIRECTED_PKT_TAG_INS;
+	    (ndev->features & NETIF_F_HW_HSR_TAG_INS)) {
+		if (!(hsr_skb_has_header(skb)))
+			epib[1] |= PRUETH_UNDIRECTED_PKT_TAG_INS;
+	}
 
 	cppi5_desc_set_tags_ids(&first_desc->hdr, 0, dst_tag_id);
 	k3_udma_glue_tx_dma_to_cppi5_addr(tx_chn->tx_chn, &buf_dma);
