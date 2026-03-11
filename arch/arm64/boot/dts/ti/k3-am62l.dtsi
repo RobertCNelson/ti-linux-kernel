@@ -113,6 +113,7 @@
 			#size-cells = <2>;
 		};
 	};
+	#include "k3-am62l-thermal.dtsi"
 };
 
 /* Now include peripherals for each bus segment */
