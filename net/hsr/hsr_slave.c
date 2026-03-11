@@ -44,8 +44,7 @@ static rx_handler_result_t hsr_handle_frame(struct sk_buff **pskb)
 
 	if (hsr_addr_is_self(port->hsr, eth_hdr(skb)->h_source)) {
 		/* Directly kill frames sent by ourselves */
-		kfree_skb(skb);
-		goto finish_consume;
+		goto finish_free_consume;
 	}
 
 	/* For HSR, only tagged frames are expected (unless the device offloads
@@ -65,8 +64,7 @@ static rx_handler_result_t hsr_handle_frame(struct sk_buff **pskb)
 	if ((!hsr->prot_version && protocol == htons(ETH_P_PRP)) ||
 	    protocol == htons(ETH_P_HSR)) {
 		if (!pskb_may_pull(skb, ETH_HLEN + HSR_HLEN)) {
-			kfree_skb(skb);
-			goto finish_consume;
+			goto finish_free_consume;
 		}
 
 		skb_set_network_header(skb, ETH_HLEN + HSR_HLEN);
@@ -81,10 +79,37 @@ static rx_handler_result_t hsr_handle_frame(struct sk_buff **pskb)
 		hsr_forward_skb(skb, port);
 		spin_unlock_bh(&hsr->seqnr_lock);
 	} else {
+		struct hsr_ethhdr *hsr_ethhdr;
+
+		/* PTP packets are not supposed to be forwarded via HSR/ PRP
+		 * as-is. The latency introduced by forwarding renders
+		 * the time information useless.
+		 * Instead attach the port information on which it was
+		 * received, forward both copies to userland and let it deal
+		 * with it.
+		 */
+		if ((!hsr->prot_version && protocol == htons(ETH_P_PRP)) ||
+		    protocol == htons(ETH_P_HSR)) {
+			/* HSR */
+			hsr_ethhdr = (struct hsr_ethhdr *)skb_mac_header(skb);
+			if (hsr_ethhdr->hsr_tag.encap_proto == htons(ETH_P_1588)) {
+				if (!hsr_skb_add_header_port(skb, false, port->type))
+					goto finish_free_consume;
+			}
+		} else {
+			if (protocol == htons(ETH_P_1588)) {
+				if (!hsr_skb_add_header_port(skb, false, port->type))
+					goto finish_free_consume;
+			}
+		}
+
 		hsr_forward_skb(skb, port);
 	}
 
-finish_consume:
+	return RX_HANDLER_CONSUMED;
+
+finish_free_consume:
+	kfree_skb(skb);
 	return RX_HANDLER_CONSUMED;
 
 finish_pass:

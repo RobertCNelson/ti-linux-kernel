@@ -28,6 +28,7 @@ struct hsr_frame_info {
 	bool is_local_exclusive;
 	bool is_from_san;
 	bool is_l2ptp;
+	bool has_foreign_header;
 };
 
 void hsr_del_self_node(struct hsr_priv *hsr);
