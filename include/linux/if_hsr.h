@@ -3,6 +3,7 @@
 #define _LINUX_IF_HSR_H_
 
 #include <linux/types.h>
+#include <linux/skbuff.h>
 
 struct net_device;
 
@@ -20,6 +21,11 @@ enum hsr_port_type {
 	HSR_PT_INTERLINK,
 	HSR_PT_MASTER,
 	HSR_PT_PORTS,	/* This must be the last item in the enum */
+};
+
+struct hsr_ptp_ext {
+	u8	port;
+	u8	header;
 };
 
 /* HSR Tag.
@@ -45,6 +51,60 @@ struct net_device *hsr_get_port_ndev(struct net_device *ndev,
 				     enum hsr_port_type pt);
 int hsr_get_port_type(struct net_device *hsr_dev, struct net_device *dev,
 		      enum hsr_port_type *type);
+
+static inline bool hsr_skb_has_header(struct sk_buff *skb)
+{
+	struct hsr_ptp_ext *ptp_ext;
+
+	ptp_ext = skb_ext_find(skb, SKB_EXT_HSR);
+	if (!ptp_ext)
+		return false;
+	return ptp_ext->header;
+}
+
+static inline unsigned int hsr_skb_has_port(struct sk_buff *skb)
+{
+	struct hsr_ptp_ext *ptp_ext;
+
+	if (!skb)
+		return 0;
+
+	ptp_ext = skb_ext_find(skb, SKB_EXT_HSR);
+	if (!ptp_ext)
+		return 0;
+	return ptp_ext->port;
+}
+
+static inline bool hsr_skb_get_header_port(struct sk_buff *skb, bool *header,
+					   enum hsr_port_type *port_type)
+{
+	struct hsr_ptp_ext *ptp_ext;
+
+	*port_type = HSR_PT_NONE;
+	*header = false;
+
+	ptp_ext = skb_ext_find(skb, SKB_EXT_HSR);
+	if (!ptp_ext)
+		return false;
+
+	*port_type = ptp_ext->port;
+	*header = ptp_ext->header;
+	return true;
+}
+
+static inline bool hsr_skb_add_header_port(struct sk_buff *skb, bool header,
+					   enum hsr_port_type port)
+{
+	struct hsr_ptp_ext *ptp_ext;
+
+	ptp_ext = skb_ext_add(skb, SKB_EXT_HSR);
+	if (!ptp_ext)
+		return false;
+	ptp_ext->port = port;
+	ptp_ext->header = header;
+	return true;
+}
+
 #else
 static inline bool is_hsr_master(struct net_device *dev)
 {
@@ -67,6 +127,28 @@ static inline int hsr_get_port_type(struct net_device *hsr_dev,
 				    enum hsr_port_type *type)
 {
 	return -EINVAL;
+}
+
+static inline bool hsr_skb_has_header(struct sk_buff *skb)
+{
+	return false;
+}
+
+static inline unsigned int hsr_skb_has_port(struct sk_buff *skb)
+{
+	return 0;
+}
+
+static inline bool hsr_skb_get_header_port(struct sk_buff *skb, bool *header,
+					   enum hsr_port_type *port_type)
+{
+	return false;
+}
+
+static inline bool hsr_skb_add_header_port(struct sk_buff *skb, bool header,
+					   enum hsr_port_type port)
+{
+	return true;
 }
 #endif /* CONFIG_HSR */
 

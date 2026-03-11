@@ -371,6 +371,13 @@ static netdev_tx_t hsr_dev_xmit(struct sk_buff *skb, struct net_device *dev)
 	master = hsr_port_get_hsr(hsr, HSR_PT_MASTER);
 	if (master) {
 		skb->dev = master->dev;
+
+		/* Only HSR (not PRP) skb may include a header. The network
+		 * header is only set to the ethernet header.
+		 */
+		if (hsr_skb_has_header(skb))
+			skb_set_network_header(skb, ETH_HLEN + HSR_HLEN);
+
 		skb_reset_mac_header(skb);
 		skb_reset_mac_len(skb);
 		spin_lock_bh(&hsr->seqnr_lock);

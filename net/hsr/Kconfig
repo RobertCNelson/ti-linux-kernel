@@ -5,6 +5,7 @@
 
 config HSR
 	tristate "High-availability Seamless Redundancy (HSR & PRP)"
+	select SKB_EXTENSIONS
 	help
 	  This enables IEC 62439 defined High-availability Seamless
 	  Redundancy (HSR) and Parallel Redundancy Protocol (PRP).
