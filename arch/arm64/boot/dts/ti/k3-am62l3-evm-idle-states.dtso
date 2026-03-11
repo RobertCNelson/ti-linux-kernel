@@ -1,0 +1,163 @@
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+/**
+ * DT overlay which adds idle states to the AM62L3 EVM,
+ * along with the necessary power domain hierarchy and mappings.
+ *
+ * This allows the system to enter standby states when idle, improving power efficiency.
+ * Also enables mode selection using s2idle approach to enter LPM - Deep Sleep and RTC+DDR.
+ *
+ * [NOTE] This overlay disables the CPSW driver
+ *
+ * Copyright (C) 2026 Texas Instruments Incorporated - https://www.ti.com/
+ */
+
+/dts-v1/;
+/plugin/;
+
+&{/}  {
+	idle-states {
+		entry-method = "psci";
+
+		cpu_sleep_0: stby {
+			compatible = "arm,idle-state";
+			idle-state-name = "Standby";
+			arm,psci-suspend-param = <0x00000001>;
+			entry-latency-us = <25>;
+			exit-latency-us = <100>;
+			min-residency-us = <1000>;
+		};
+
+		cpu_sleep_1: powerdown {
+			compatible = "arm,idle-state";
+			idle-state-name = "PowerDown";
+			arm,psci-suspend-param = <0x012233>;
+			entry-latency-us = <250000>;
+			exit-latency-us = <100000>;
+			min-residency-us = <1000000>;
+			local-timer-stop;
+		};
+	};
+
+	domain-idle-states {
+		cluster_sleep_0: low-latency-stby {
+			compatible = "domain-idle-state";
+			arm,psci-suspend-param = <0x01000021>;
+			entry-latency-us = <200>;
+			exit-latency-us = <300>;
+			min-residency-us = <10000>;
+		};
+
+		main_sleep_deep: main-sleep-deep {
+			compatible = "domain-idle-state";
+			arm,psci-suspend-param = <0x2012235>;
+			entry-latency-us = <10000>;
+			exit-latency-us = <10000>;
+			min-residency-us = <500000>;
+			local-timer-stop;
+		};
+
+		main_sleep_rtcddr: main-sleep-rtcddr {
+			compatible = "domain-idle-state";
+			arm,psci-suspend-param = <0x2012234>;
+			local-timer-stop;
+			entry-latency-us = <300000>;
+			exit-latency-us = <600000>;
+			min-residency-us = <1000000>;
+		};
+	};
+};
+
+&cpu0 {
+	power-domains = <&CPU_PD>;
+	power-domain-names = "psci";
+};
+
+&cpu1 {
+	power-domains = <&CPU_PD>;
+	power-domain-names = "psci";
+};
+
+/*
+ * HACK : Adding DSS driver under the Cluster PD
+ * The standby state puts DDR in Auto Self Refresh, however due to a bug in DDR Auto self refresh
+ * when the display is active, DSS driver faces Plane Underflow and SYNC_LOST errors.
+ * This is a workaround to prevent entry into standby when the display is active.
+ */
+&scmi_pds {
+	power-domain-map = <3 &CLUSTER_PD>, /* CPSW3G */
+			   <39 &CLUSTER_PD>, /* DSS0 */
+			   <38 &CLUSTER_PD>, /* DSS_DSI0 */
+			   <15 &MAIN_PD>, /* TIMER0 */
+			   <16 &MAIN_PD>, /* TIMER1 */
+			   <17 &MAIN_PD>, /* TIMER2 */
+			   <18 &MAIN_PD>, /* TIMER3 */
+			   <23 &MAIN_PD>, /* ECAP0 */
+			   <24 &MAIN_PD>, /* ECAP1 */
+			   <25 &MAIN_PD>, /* ECAP2/ELM0 */
+			   <26 &MAIN_PD>, /* SDHCI1 */
+			   <27 &MAIN_PD>, /* SDHCI2 */
+			   <28 &MAIN_PD>, /* SDHCI0 */
+			   <29 &MAIN_PD>, /* EQEP0 */
+			   <30 &MAIN_PD>, /* EQEP1 */
+			   <31 &MAIN_PD>, /* EQEP2 */
+			   <32 &MAIN_PD>, /* OSPI0 */
+			   <34 &MAIN_PD>, /* GPIO0 */
+			   <35 &MAIN_PD>, /* GPIO2 */
+			   <37 &MAIN_PD>, /* GPMC0 */
+			   <40 &MAIN_PD>, /* EPWM0 */
+			   <41 &MAIN_PD>, /* EPWM1 */
+			   <42 &MAIN_PD>, /* EPWM2 */
+			   <47 &MAIN_PD>, /* MCAN0 */
+			   <48 &MAIN_PD>, /* MCAN1 */
+			   <49 &MAIN_PD>, /* MCAN2 */
+			   <53 &MAIN_PD>, /* I2C0 */
+			   <54 &MAIN_PD>, /* I2C1 */
+			   <55 &MAIN_PD>, /* I2C2 */
+			   <56 &MAIN_PD>, /* I2C3 */
+			   <72 &MAIN_PD>, /* SPI0 */
+			   <73 &MAIN_PD>, /* SPI1 */
+			   <74 &MAIN_PD>, /* SPI2 */
+			   <75 &MAIN_PD>, /* SPI3 */
+			   <77 &MAIN_PD>, /* UART1 */
+			   <78 &MAIN_PD>, /* UART2 */
+			   <79 &MAIN_PD>, /* UART3 */
+			   <80 &MAIN_PD>, /* UART4 */
+			   <81 &MAIN_PD>, /* UART5 */
+			   <82 &MAIN_PD>, /* UART6 */
+			   <86 &MAIN_PD>, /* DPHY_TX0 */
+			   <89 &MAIN_PD>, /* UART0 */
+			   <95 &MAIN_PD>, /* USBSS0 */
+			   <96 &MAIN_PD>; /* USBSS1 */
+};
+
+&psci {
+	CPU_PD: power-controller-cpu {
+		#power-domain-cells = <0>;
+		power-domains = <&CLUSTER_PD>;
+		domain-idle-states = <&cpu_sleep_0>, <&cpu_sleep_1>;
+	};
+
+	CLUSTER_PD: power-controller-cluster {
+		#power-domain-cells = <0>;
+		domain-idle-states = <&cluster_sleep_0>;
+		power-domains = <&MAIN_PD>;
+	};
+
+	MAIN_PD: power-controller-main {
+		#power-domain-cells = <0>;
+		domain-idle-states = <&main_sleep_deep>, <&main_sleep_rtcddr>;
+	};
+};
+
+&cbass_main {
+	cpsw3g: ethernet@8000000 {
+		ethernet-ports {
+			cpsw_port1: port@1 {
+				status = "disabled";
+			};
+			cpsw_port2: port@2 {
+				status = "disabled";
+			};
+		};
+	};
+};
