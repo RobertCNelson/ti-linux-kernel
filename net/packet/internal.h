@@ -114,6 +114,7 @@ struct packet_sock {
 	unsigned long		flags;
 	int			ifindex;	/* bound device		*/
 	u8			vnet_hdr_sz;
+	u8			hsr_bound_port;
 	__be16			num;
 	struct packet_rollover	*rollover;
 	struct packet_mclist	*mclist;
