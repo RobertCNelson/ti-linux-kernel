@@ -57,6 +57,10 @@ dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk-ub954-evm-ov2312.dtb
 # Boards with AM62Dx SoC
 dtb-$(CONFIG_ARCH_K3) += k3-am62d2-evm.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-am62d2-evm-dsp-controlled-audio.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-am62l3-evm-ecap-capture.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-am62l3-evm-eqep.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-am62l3-evm-mcan.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-am62l3-evm-pwm.dtbo
 
 # Boards with AM62Lx SoCs
 dtb-$(CONFIG_ARCH_K3) += k3-am62l3-evm.dtb
