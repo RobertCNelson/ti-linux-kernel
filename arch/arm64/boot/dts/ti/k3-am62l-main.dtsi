@@ -480,22 +480,6 @@
 		};
 	};
 
-	sdhci1: mmc@fa00000 {
-		compatible = "ti,j721e-sdhci-4bit";
-		reg = <0x00 0x0fa00000 0x00 0x1000>,
-		      <0x00 0x0fa08000 0x00 0x400>;
-		interrupts = <GIC_SPI 237 IRQ_TYPE_LEVEL_HIGH>;
-		power-domains = <&scmi_pds 26>;
-		clocks = <&scmi_clk 106>, <&scmi_clk 109>;
-		clock-names = "clk_ahb", "clk_xin";
-		assigned-clocks = <&scmi_clk 109>;
-		bus-width = <4>;
-		ti,clkbuf-sel = <0x7>;
-		ti,otap-del-sel-legacy = <0x0>;
-		ti,itap-del-sel-legacy = <0x0>;
-		status = "disabled";
-	};
-
 	sdhci0: mmc@fa10000 {
 		compatible = "ti,am62-sdhci";
 		reg = <0x00 0xfa10000 0x00 0x1000>,
@@ -505,14 +489,42 @@
 		clocks = <&scmi_clk 122>, <&scmi_clk 125>;
 		clock-names = "clk_ahb", "clk_xin";
 		assigned-clocks = <&scmi_clk 125>;
+		assigned-clock-parents = <&scmi_clk 124>;
 		bus-width = <8>;
 		mmc-ddr-1_8v;
+		mmc-hs200-1_8v;
 		ti,clkbuf-sel = <0x7>;
 		ti,otap-del-sel-legacy = <0x0>;
 		ti,otap-del-sel-mmc-hs = <0x0>;
 		ti,otap-del-sel-ddr52 = <0x15>;
 		ti,otap-del-sel-hs200 = <0x6>;
 		ti,itap-del-sel-ddr52 = <0x2>;
+		status = "disabled";
+	};
+
+	sdhci1: mmc@fa00000 {
+		compatible = "ti,j721e-sdhci-4bit";
+		reg = <0x00 0x0fa00000 0x00 0x1000>,
+		      <0x00 0x0fa08000 0x00 0x400>;
+		interrupts = <GIC_SPI 237 IRQ_TYPE_LEVEL_HIGH>;
+		power-domains = <&scmi_pds 26>;
+		clocks = <&scmi_clk 106>, <&scmi_clk 109>;
+		clock-names = "clk_ahb", "clk_xin";
+		assigned-clocks = <&scmi_clk 109>;
+		assigned-clock-parents = <&scmi_clk 108>;
+		bus-width = <4>;
+		ti,clkbuf-sel = <0x7>;
+		ti,otap-del-sel-legacy = <0x0>;
+		ti,otap-del-sel-sd-hs = <0x0>;
+		ti,otap-del-sel-sdr12 = <0xf>;
+		ti,otap-del-sel-sdr25 = <0xf>;
+		ti,otap-del-sel-sdr50 = <0xc>;
+		ti,otap-del-sel-sdr104 = <0x6>;
+		ti,otap-del-sel-ddr50 = <0x9>;
+		ti,itap-del-sel-legacy = <0x0>;
+		ti,itap-del-sel-sd-hs = <0x0>;
+		ti,itap-del-sel-sdr12 = <0x0>;
+		ti,itap-del-sel-sdr25 = <0x0>;
 		status = "disabled";
 	};
 
@@ -525,10 +537,20 @@
 		clocks = <&scmi_clk 114>, <&scmi_clk 117>;
 		clock-names = "clk_ahb", "clk_xin";
 		assigned-clocks = <&scmi_clk 117>;
+		assigned-clock-parents = <&scmi_clk 116>;
 		bus-width = <4>;
 		ti,clkbuf-sel = <0x7>;
 		ti,otap-del-sel-legacy = <0x0>;
+		ti,otap-del-sel-sd-hs = <0x0>;
+		ti,otap-del-sel-sdr12 = <0xf>;
+		ti,otap-del-sel-sdr25 = <0xf>;
+		ti,otap-del-sel-sdr50 = <0xc>;
+		ti,otap-del-sel-sdr104 = <0x6>;
+		ti,otap-del-sel-ddr50 = <0x9>;
 		ti,itap-del-sel-legacy = <0x0>;
+		ti,itap-del-sel-sd-hs = <0x0>;
+		ti,itap-del-sel-sdr12 = <0x0>;
+		ti,itap-del-sel-sdr25 = <0x0>;
 		status = "disabled";
 	};
 
