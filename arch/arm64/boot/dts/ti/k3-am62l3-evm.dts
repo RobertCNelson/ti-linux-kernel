@@ -634,6 +634,14 @@
 	};
 };
 
+&tscadc0 {
+	status = "okay";
+
+	adc {
+		ti,adc-channels = <0 1 2 3>;
+	};
+};
+
 &cpsw3g {
 	pinctrl-names = "default";
 	pinctrl-0 = <&rgmii1_pins_default>,
