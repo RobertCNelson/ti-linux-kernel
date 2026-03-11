@@ -17,7 +17,7 @@
 		no-map;
 	};
 
-	edgeai_shared_region: edgeai-shared-memories@a3000000 {
+	edgeai_shared_region: edgeai_shared-memories {
 		compatible = "dma-heap-carveout";
 		reg = <0x00 0xa3000000 0x00 0x0ac00000>;
 	};
