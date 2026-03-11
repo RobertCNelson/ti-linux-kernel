@@ -60,6 +60,7 @@ struct sockaddr_ll {
 #define PACKET_FANOUT_DATA		22
 #define PACKET_IGNORE_OUTGOING		23
 #define PACKET_VNET_HDR_SZ		24
+#define PACKET_HSR_BIND_PORT		25
 
 #define PACKET_FANOUT_HASH		0
 #define PACKET_FANOUT_LB		1
@@ -73,6 +74,14 @@ struct sockaddr_ll {
 #define PACKET_FANOUT_FLAG_UNIQUEID	0x2000
 #define PACKET_FANOUT_FLAG_IGNORE_OUTGOING     0x4000
 #define PACKET_FANOUT_FLAG_DEFRAG	0x8000
+
+/* For HSR, bind port */
+#define PACKET_HSR_BIND_PORT_AB		0
+#define PACKET_HSR_BIND_PORT_A		1
+#define PACKET_HSR_BIND_PORT_B		2
+/* HSR, CMSG */
+#define PACKET_HSR_INFO			1
+#define PACKET_HSR_INFO_HAS_HDR		1
 
 struct tpacket_stats {
 	unsigned int	tp_packets;

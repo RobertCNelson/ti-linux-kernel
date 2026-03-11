@@ -82,6 +82,7 @@
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/mutex.h>
+#include <linux/if_hsr.h>
 #include <linux/if_vlan.h>
 #include <linux/virtio_net.h>
 #include <linux/errqueue.h>
@@ -283,6 +284,94 @@ static int packet_xmit(const struct packet_sock *po, struct sk_buff *skb)
 #endif
 	return dev_direct_xmit(skb, packet_pick_tx_queue(skb));
 }
+
+#if IS_ENABLED(CONFIG_HSR)
+
+static DEFINE_STATIC_KEY_FALSE(hsr_ptp_support_enabled);
+
+static inline bool packet_add_ptp_settings(struct sk_buff *skb,
+					   bool header, unsigned int port)
+{
+	if (!static_branch_unlikely(&hsr_ptp_support_enabled))
+		return true;
+
+	if (!port)
+		return true;
+
+	return hsr_skb_add_header_port(skb, header, port);
+}
+
+static inline bool packet_filter_hsr_port(struct packet_sock *po, struct sk_buff *skb)
+{
+	unsigned int req_port;
+	bool req_hdr;
+
+	if (!static_branch_unlikely(&hsr_ptp_support_enabled))
+		return false;
+
+	if (!po->hsr_bound_port)
+		return false;
+
+	if (!hsr_skb_get_header_port(skb, &req_hdr, &req_port))
+		return true;
+
+	if (req_port == po->hsr_bound_port)
+		return false;
+	return true;
+}
+
+static int packet_cmsg_send(struct msghdr *msg, struct packet_sock *po,
+			    bool *hsr_has_hdr)
+{
+	struct cmsghdr *cmsg;
+	int ret = -EINVAL;
+	u32 val;
+
+	if (!static_branch_unlikely(&hsr_ptp_support_enabled))
+		return 0;
+
+	for_each_cmsghdr(cmsg, msg) {
+		if (!CMSG_OK(msg, cmsg))
+			goto out;
+		if (cmsg->cmsg_level != SOL_PACKET)
+			continue;
+		if (cmsg->cmsg_type != PACKET_HSR_INFO)
+			continue;
+		if (cmsg->cmsg_len != CMSG_LEN(sizeof(u32)))
+			goto out;
+
+		val = *(u32 *)CMSG_DATA(cmsg);
+		if (val != PACKET_HSR_INFO_HAS_HDR)
+			goto out;
+		if (!po->hsr_bound_port)
+			goto out;
+
+		*hsr_has_hdr = true;
+	}
+	ret = 0;
+out:
+	return ret;
+}
+
+#else
+
+static bool packet_add_ptp_settings(struct sk_buff *skb,
+				    bool header, unsigned int port)
+{
+	return true;
+}
+
+static bool packet_filter_hsr_port(struct packet_sock *po, struct sk_buff *skb)
+{
+	return false;
+}
+
+static int packet_cmsg_send(struct msghdr *msg, struct packet_sock *po,
+			    bool *hsr_has_hdr)
+{
+	return 0;
+}
+#endif
 
 static struct net_device *packet_cached_dev_get(struct packet_sock *po)
 {
@@ -2131,6 +2220,9 @@ static int packet_rcv(struct sk_buff *skb, struct net_device *dev,
 	if (!net_eq(dev_net(dev), sock_net(sk)))
 		goto drop;
 
+	if (packet_filter_hsr_port(po, skb))
+		goto drop;
+
 	skb->dev = dev;
 
 	if (dev_has_header(dev)) {
@@ -2258,6 +2350,9 @@ static int tpacket_rcv(struct sk_buff *skb, struct net_device *dev,
 	po = pkt_sk(sk);
 
 	if (!net_eq(dev_net(dev), sock_net(sk)))
+		goto drop;
+
+	if (packet_filter_hsr_port(po, skb))
 		goto drop;
 
 	if (dev_has_header(dev)) {
@@ -2731,6 +2826,7 @@ static int tpacket_snd(struct packet_sock *po, struct msghdr *msg)
 	int len_sum = 0;
 	int status = TP_STATUS_AVAILABLE;
 	int hlen, tlen, copylen = 0;
+	bool hsr_has_hdr = false;
 	long timeo;
 
 	mutex_lock(&po->pg_vec_lock);
@@ -2773,6 +2869,10 @@ static int tpacket_snd(struct packet_sock *po, struct msghdr *msg)
 	sockcm_init(&sockc, &po->sk);
 	if (msg->msg_controllen) {
 		err = sock_cmsg_send(&po->sk, msg, &sockc);
+		if (unlikely(err))
+			goto out_put;
+
+		err = packet_cmsg_send(msg, po, &hsr_has_hdr);
 		if (unlikely(err))
 			goto out_put;
 	}
@@ -2863,6 +2963,10 @@ tpacket_error:
 				goto out_status;
 			}
 		}
+		if (!packet_add_ptp_settings(skb, hsr_has_hdr, po->hsr_bound_port)) {
+			err = -ENOMEM;
+			goto out_status;
+		}
 
 		if (vnet_hdr_sz) {
 			if (virtio_net_hdr_to_skb(skb, vnet_hdr, vio_le())) {
@@ -2950,6 +3054,7 @@ static int packet_snd(struct socket *sock, struct msghdr *msg, size_t len)
 	int offset = 0;
 	struct packet_sock *po = pkt_sk(sk);
 	int vnet_hdr_sz = READ_ONCE(po->vnet_hdr_sz);
+	bool hsr_has_hdr = false;
 	int hlen, tlen, linear;
 	int extra_len = 0;
 
@@ -2986,6 +3091,10 @@ static int packet_snd(struct socket *sock, struct msghdr *msg, size_t len)
 	sockcm_init(&sockc, sk);
 	if (msg->msg_controllen) {
 		err = sock_cmsg_send(sk, msg, &sockc);
+		if (unlikely(err))
+			goto out_unlock;
+
+		err = packet_cmsg_send(msg, po, &hsr_has_hdr);
 		if (unlikely(err))
 			goto out_unlock;
 	}
@@ -3047,6 +3156,10 @@ static int packet_snd(struct socket *sock, struct msghdr *msg, size_t len)
 	}
 
 	skb_setup_tx_timestamp(skb, &sockc);
+	if (!packet_add_ptp_settings(skb, hsr_has_hdr, po->hsr_bound_port)) {
+		err = -ENOMEM;
+		goto out_free;
+	}
 
 	sock_tx_redundant_info(sk, &sockc.redinfo, skb);
 
@@ -3168,6 +3281,11 @@ static int packet_release(struct socket *sock)
 		fanout_release_data(f);
 		kvfree(f);
 	}
+
+#if IS_ENABLED(CONFIG_HSR)
+	if (po->hsr_bound_port)
+		static_branch_dec(&hsr_ptp_support_enabled);
+#endif
 	/*
 	 *	Now the socket is dead. No more input will appear.
 	 */
@@ -4047,6 +4165,40 @@ packet_setsockopt(struct socket *sock, int level, int optname, sockptr_t optval,
 		packet_sock_flag_set(po, PACKET_SOCK_QDISC_BYPASS, val);
 		return 0;
 	}
+	case PACKET_HSR_BIND_PORT:
+	{
+#if IS_ENABLED(CONFIG_HSR)
+		int old_val;
+		int val;
+
+		if (optlen != sizeof(val))
+			return -EINVAL;
+		if (copy_from_sockptr(&val, optval, sizeof(val)))
+			return -EFAULT;
+
+		old_val = !!po->hsr_bound_port;
+		switch (val) {
+		case PACKET_HSR_BIND_PORT_AB:
+			po->hsr_bound_port = 0;
+			break;
+		case PACKET_HSR_BIND_PORT_A:
+			po->hsr_bound_port = HSR_PT_SLAVE_A;
+			break;
+		case PACKET_HSR_BIND_PORT_B:
+			po->hsr_bound_port = HSR_PT_SLAVE_B;
+			break;
+		default:
+			return -EINVAL;
+		}
+		if (old_val != !!po->hsr_bound_port) {
+			if (po->hsr_bound_port)
+				static_branch_inc(&hsr_ptp_support_enabled);
+			else
+				static_branch_dec(&hsr_ptp_support_enabled);
+		}
+		return 0;
+#endif
+	}
 	default:
 		return -ENOPROTOOPT;
 	}
@@ -4166,6 +4318,21 @@ static int packet_getsockopt(struct socket *sock, int level, int optname,
 		break;
 	case PACKET_QDISC_BYPASS:
 		val = packet_sock_flag(po, PACKET_SOCK_QDISC_BYPASS);
+		break;
+	case PACKET_HSR_BIND_PORT:
+		switch (po->hsr_bound_port) {
+		case 0:
+			val = PACKET_HSR_BIND_PORT_AB;
+			break;
+		case HSR_PT_SLAVE_A:
+			val = PACKET_HSR_BIND_PORT_A;
+			break;
+		case HSR_PT_SLAVE_B:
+			val = PACKET_HSR_BIND_PORT_B;
+			break;
+		default:
+			return -EINVAL;
+		}
 		break;
 	default:
 		return -ENOPROTOOPT;
