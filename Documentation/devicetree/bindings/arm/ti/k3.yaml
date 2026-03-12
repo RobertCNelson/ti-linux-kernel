@@ -40,6 +40,7 @@ properties:
       - description: K3 AM62L3 SoC and Boards
         items:
           - enum:
+              - beagle,am62l3-badge
               - ti,am62l3-evm
               - ti,am62l3-minimal
           - const: ti,am62l3
