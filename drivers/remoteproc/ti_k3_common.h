@@ -81,6 +81,7 @@ struct k3_rproc_dev_data {
  * @suspend_comp: supend completion synchronozation event
  * @pm_notifier: notifier to subscribe for pm suspend event
  * @suspend_status: suspend status
+ * @qos_req: PM QoS request
  */
 struct k3_rproc {
 	struct device *dev;
@@ -102,6 +103,7 @@ struct k3_rproc {
 	struct notifier_block pm_notifier;
 	bool late_pm;
 	enum omap_rp_mbox_messages suspend_status;
+	struct dev_pm_qos_request qos_req;
 };
 
 void k3_rproc_mbox_callback(struct mbox_client *client, void *data);
@@ -130,4 +132,5 @@ int k3_rproc_suspend(struct rproc *rproc);
 int k3_rproc_resume(struct rproc *rproc);
 int k3_rproc_pm_notifier_call(struct notifier_block *bl, unsigned long state, void *unused);
 int k3_rproc_suspend_late(struct device *dev);
+void k3_remove_pm_qos_request(void *data);
 #endif /* REMOTEPROC_TI_K3_COMMON_H */

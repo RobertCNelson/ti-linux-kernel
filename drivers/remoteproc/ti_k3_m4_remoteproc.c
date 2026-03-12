@@ -12,6 +12,7 @@
 #include <linux/of_address.h>
 #include <linux/of_reserved_mem.h>
 #include <linux/platform_device.h>
+#include <linux/pm_qos.h>
 #include <linux/remoteproc.h>
 #include <linux/reset.h>
 #include <linux/slab.h>
@@ -121,6 +122,13 @@ static int k3_m4_rproc_probe(struct platform_device *pdev)
 		kproc->pm_notifier.notifier_call = k3_rproc_pm_notifier_call;
 		register_pm_notifier(&kproc->pm_notifier);
 		kproc->late_pm = true;
+		ret = dev_pm_qos_add_request(dev, &kproc->qos_req, DEV_PM_QOS_RESUME_LATENCY,
+					     PM_QOS_RESUME_LATENCY_NO_CONSTRAINT);
+		if (ret < 0)
+			return dev_err_probe(dev, ret, "failed to add PM QoS request\n");
+		ret = devm_add_action_or_reset(dev, k3_remove_pm_qos_request, kproc);
+		if (ret)
+			return ret;
 	}
 
 	ret = k3_rproc_request_mbox(rproc);

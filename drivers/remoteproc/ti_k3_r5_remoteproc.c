@@ -939,6 +939,13 @@ static int k3_r5_rproc_configure_mode(struct k3_rproc *kproc)
 		kproc->pm_notifier.notifier_call = k3_rproc_pm_notifier_call;
 		register_pm_notifier(&kproc->pm_notifier);
 		kproc->late_pm = true;
+		ret = dev_pm_qos_add_request(cdev, &kproc->qos_req, DEV_PM_QOS_RESUME_LATENCY,
+					     PM_QOS_RESUME_LATENCY_NO_CONSTRAINT);
+		if (ret < 0)
+			return ret;
+		ret = devm_add_action_or_reset(cdev, k3_remove_pm_qos_request, kproc);
+		if (ret)
+			return ret;
 		ret = 0;
 	} else {
 		dev_err(cdev, "mismatched mode: local_reset = %s, module_reset = %s, core_state = %s\n",
