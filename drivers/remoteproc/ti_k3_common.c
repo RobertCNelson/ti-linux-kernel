@@ -691,7 +691,6 @@ int k3_rproc_suspend(struct rproc *rproc)
 	struct k3_rproc *kproc = rproc->priv;
 	unsigned long msg = RP_MBOX_SUSPEND_SYSTEM;
 	unsigned long to = msecs_to_jiffies(5000);
-	struct dev_pm_qos_request qos_req;
 	struct device *dev = kproc->dev;
 	int ret = 0;
 
@@ -710,7 +709,7 @@ int k3_rproc_suspend(struct rproc *rproc)
 	if (ret == 0) {
 		dev_err(dev, "timedout waiting for rproc suspend ack\n");
 		/* Set constraint to keep the device on */
-		dev_pm_qos_add_request(kproc->dev, &qos_req, DEV_PM_QOS_RESUME_LATENCY, 0);
+		dev_pm_qos_update_request(&kproc->qos_req, 0);
 		return 0;
 	};
 
@@ -739,6 +738,8 @@ int k3_rproc_resume(struct rproc *rproc)
 	bool cstatus = false;
 	struct device *dev = kproc->dev;
 	int ret = 0;
+
+	dev_pm_qos_update_request(&kproc->qos_req, PM_QOS_RESUME_LATENCY_NO_CONSTRAINT);
 
 	if (rproc->state != RPROC_SUSPENDED)
 		return 0;
@@ -801,6 +802,15 @@ int k3_rproc_suspend_late(struct device *dev)
 	return k3_rproc_suspend(kproc->rproc);
 }
 EXPORT_SYMBOL_GPL(k3_rproc_suspend_late);
+
+void k3_remove_pm_qos_request(void *data)
+{
+	struct k3_rproc *kproc = data;
+
+	if (dev_pm_qos_request_active(&kproc->qos_req))
+		dev_pm_qos_remove_request(&kproc->qos_req);
+}
+EXPORT_SYMBOL_GPL(k3_remove_pm_qos_request);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("TI K3 common Remoteproc code");
