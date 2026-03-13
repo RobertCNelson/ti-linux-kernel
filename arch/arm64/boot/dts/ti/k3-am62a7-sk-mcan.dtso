@@ -33,8 +33,8 @@
 &main_pmx0 {
 	main_mcan0_pins_default: main-mcan0-pins-default {
 		pinctrl-single,pins = <
-			AM62X_IOPAD(0x01dc, PIN_INPUT, 0) /* (E15) MCAN0_RX */
-			AM62X_IOPAD(0x01d8, PIN_OUTPUT, 0) /* (C15) MCAN0_TX */
+			AM62AX_IOPAD(0x01dc, PIN_INPUT, 0) /* (C18) MCAN0_RX */
+			AM62AX_IOPAD(0x01d8, PIN_OUTPUT, 0) /* (B17) MCAN0_TX */
 		>;
 	};
 };

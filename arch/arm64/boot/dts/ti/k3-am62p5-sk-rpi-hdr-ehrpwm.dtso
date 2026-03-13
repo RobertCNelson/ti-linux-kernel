@@ -86,7 +86,7 @@
 };
 
 &ecap2 {
-	/* Confict: MCASP0_ACLKX */
+	/* Conflict: MCASP0_ACLKX */
 	status = "disabled";
 };
 

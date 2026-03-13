@@ -44,13 +44,13 @@
 &main_pmx0 {
 	usr_led_pins_default: usr-led-pins-default {
 		pinctrl-single,pins = <
-			AM62X_IOPAD(0x244, PIN_OUTPUT, 2) /* (C17) MMC1_SDWP.TIMER_IO7 */
+			AM62AX_IOPAD(0x244, PIN_OUTPUT, 2) /* (D18) MMC1_SDWP.TIMER_IO7 */
 		>;
 	};
 
 	main_timer3_pins_default: main_timer3-default-pins {
 		pinctrl-single,pins = <
-			AM62X_IOPAD(0x01dc, PIN_OUTPUT, 2) /* (A15) MCAN0_RX.TIMER_IO3 */
+			AM62AX_IOPAD(0x01dc, PIN_OUTPUT, 2) /* (C18) MCAN0_RX.TIMER_IO3 */
 		>;
 	};
 };
