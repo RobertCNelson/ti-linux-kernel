@@ -62,12 +62,12 @@
 };
 
 &ecap0 {
-	/* Conflict: MCASP0_ACLKX */
+	/* Conflict: SPI0_CS1 */
 	status = "disabled";
 };
 
 &ecap2 {
-	/* Conflict: SPI0_CS1 */
+	/* Conflict: MCASP0_ACLKX */
 	status = "disabled";
 };
 
