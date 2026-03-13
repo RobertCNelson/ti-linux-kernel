@@ -1524,7 +1524,7 @@ static void am65_cpsw_dispatch_skb_zc(struct am65_cpsw_rx_flow *flow,
 
 	ndev_priv = netdev_priv(ndev);
 	am65_cpsw_nuss_set_offload_fwd_mark(skb, ndev_priv->offload_fwd_mark);
-	if (port->rx_ts_enabled)
+	if (port->rx_ts_filter)
 		am65_cpts_rx_timestamp(common->cpts, port->port_id, skb);
 
 	skb_mark_for_recycle(skb);
