@@ -2528,14 +2528,17 @@ static void show_info(struct cpsw_proxy_priv *proxy_priv)
 
 struct client_soc_data {
 	const char	*dma_compatible;
+	bool		dma_coherent;
 };
 
 static const struct client_soc_data j721e_soc_data = {
 	.dma_compatible = "ti,j721e-navss-main-udmap",
+	.dma_coherent = true,
 };
 
 static const struct client_soc_data am62px_soc_data = {
 	.dma_compatible = "ti,am64-dmss-pktdma",
+	.dma_coherent = false,
 };
 
 static const struct soc_device_attribute soc_dma_type[] = {
@@ -2565,6 +2568,7 @@ static int cpsw_proxy_client_probe(struct rpmsg_device *rpdev)
 		proxy_priv->dma_node =
 			of_find_compatible_node(NULL, NULL,
 						socdata->dma_compatible);
+		proxy_priv->dev->dma_coherent = socdata->dma_coherent;
 	} else {
 		dev_err(proxy_priv->dev, "SoC not supported\n");
 		return -ENODEV;
