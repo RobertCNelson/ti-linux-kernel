@@ -753,6 +753,11 @@ int k3_rproc_resume(struct rproc *rproc)
 	if (cstatus) {
 		/* Device is ON/ACTIVE */
 		dev_dbg(dev, "remote core is already on in resume\n");
+		ret = mbox_send_message(kproc->mbox, (void *)(uintptr_t)RP_MBOX_ECHO_REQUEST);
+		if (ret < 0) {
+			dev_err(kproc->dev, "PM mbox_send_message failed: %d\n", ret);
+			return ret;
+		}
 	} else {
 		dev_dbg(dev, "remote core is off in resume\n");
 		k3_rproc_reset(kproc);
