@@ -193,6 +193,13 @@ struct sii902x {
 		struct platform_device *pdev;
 		struct clk *mclk;
 		u32 i2s_fifo_sequence[4];
+		bool active;
+		/* Audio register context for save/resume */
+		unsigned int ctx_i2s_input_config;
+		unsigned int ctx_audio_config_byte2;
+		unsigned int ctx_audio_config_byte3;
+		u8 ctx_i2s_stream_header[SII902X_TPI_I2S_STRM_HDR_SIZE];
+		u8 ctx_audio_infoframe[SII902X_TPI_MISC_INFOFRAME_SIZE];
 	} audio;
 };
 
@@ -781,6 +788,8 @@ static int sii902x_audio_hw_params(struct device *dev, void *data,
 	if (ret)
 		goto out;
 
+	sii902x->audio.active = true;
+
 	dev_dbg(dev, "%s: hdmi audio enabled\n", __func__);
 out:
 	mutex_unlock(&sii902x->mutex);
@@ -802,6 +811,8 @@ static void sii902x_audio_shutdown(struct device *dev, void *data)
 
 	regmap_write(sii902x->regmap, SII902X_TPI_AUDIO_CONFIG_BYTE2_REG,
 		     SII902X_TPI_AUDIO_INTERFACE_DISABLE);
+
+	sii902x->audio.active = false;
 
 	mutex_unlock(&sii902x->mutex);
 
@@ -1099,7 +1110,7 @@ static int __maybe_unused sii902x_resume(struct device *dev)
 {
 	struct sii902x *sii902x = dev_get_drvdata(dev);
 	unsigned int tpi_reg, status;
-	int ret;
+	int ret, i;
 
 	ret = regmap_read(sii902x->regmap, SII902X_REG_TPI_RQB, &tpi_reg);
 	if (ret)
@@ -1127,7 +1138,62 @@ static int __maybe_unused sii902x_resume(struct device *dev)
 	regmap_read(sii902x->regmap, SII902X_INT_STATUS, &status);
 	regmap_write(sii902x->regmap, SII902X_INT_STATUS, status);
 
+	/*
+	 * Restore audio context if audio was active before suspend,
+	 * in the matching order of sii902x_audio_hw_params()
+	 * initialization
+	 */
+	if (sii902x->audio.active) {
+		/* Re-enable mclk */
+		ret = clk_prepare_enable(sii902x->audio.mclk);
+		if (ret) {
+			dev_err(dev, "Failed to re-enable mclk: %d\n", ret);
+			return ret;
+		}
+
+		ret = regmap_write(sii902x->regmap, SII902X_TPI_AUDIO_CONFIG_BYTE2_REG,
+				   sii902x->audio.ctx_audio_config_byte2);
+		if (ret)
+			goto err_audio_resume;
+
+		ret = regmap_write(sii902x->regmap, SII902X_TPI_I2S_INPUT_CONFIG_REG,
+				   sii902x->audio.ctx_i2s_input_config);
+		if (ret)
+			goto err_audio_resume;
+
+		for (i = 0; i < ARRAY_SIZE(sii902x->audio.i2s_fifo_sequence) &&
+		     sii902x->audio.i2s_fifo_sequence[i]; i++) {
+			ret = regmap_write(sii902x->regmap,
+					   SII902X_TPI_I2S_ENABLE_MAPPING_REG,
+					   sii902x->audio.i2s_fifo_sequence[i]);
+			if (ret)
+				goto err_audio_resume;
+		}
+
+		ret = regmap_write(sii902x->regmap, SII902X_TPI_AUDIO_CONFIG_BYTE3_REG,
+				   sii902x->audio.ctx_audio_config_byte3);
+		if (ret)
+			goto err_audio_resume;
+
+		ret = regmap_bulk_write(sii902x->regmap, SII902X_TPI_I2S_STRM_HDR_BASE,
+					sii902x->audio.ctx_i2s_stream_header,
+					SII902X_TPI_I2S_STRM_HDR_SIZE);
+		if (ret)
+			goto err_audio_resume;
+
+		ret = regmap_bulk_write(sii902x->regmap, SII902X_TPI_MISC_INFOFRAME_BASE,
+					sii902x->audio.ctx_audio_infoframe,
+					SII902X_TPI_MISC_INFOFRAME_SIZE);
+		if (ret)
+			goto err_audio_resume;
+	}
+
 	return 0;
+
+err_audio_resume:
+	clk_disable_unprepare(sii902x->audio.mclk);
+	dev_err(dev, "Failed to restore audio registers: %d\n", ret);
+	return ret;
 }
 
 static int __maybe_unused sii902x_suspend(struct device *dev)
@@ -1139,6 +1205,29 @@ static int __maybe_unused sii902x_suspend(struct device *dev)
 
 	regmap_read(sii902x->regmap, SII902X_INT_ENABLE,
 		    &sii902x->ctx_interrupt);
+
+	/*
+	 * Save audio context if audio is active, and
+	 * in the matching order of sii902x_audio_hw_params()
+	 * initialization
+	 */
+	if (sii902x->audio.active) {
+		regmap_read(sii902x->regmap, SII902X_TPI_AUDIO_CONFIG_BYTE2_REG,
+			    &sii902x->audio.ctx_audio_config_byte2);
+		regmap_read(sii902x->regmap, SII902X_TPI_I2S_INPUT_CONFIG_REG,
+			    &sii902x->audio.ctx_i2s_input_config);
+		regmap_read(sii902x->regmap, SII902X_TPI_AUDIO_CONFIG_BYTE3_REG,
+			    &sii902x->audio.ctx_audio_config_byte3);
+		regmap_bulk_read(sii902x->regmap, SII902X_TPI_I2S_STRM_HDR_BASE,
+				 sii902x->audio.ctx_i2s_stream_header,
+				 SII902X_TPI_I2S_STRM_HDR_SIZE);
+		regmap_bulk_read(sii902x->regmap, SII902X_TPI_MISC_INFOFRAME_BASE,
+				 sii902x->audio.ctx_audio_infoframe,
+				 SII902X_TPI_MISC_INFOFRAME_SIZE);
+
+		/* Disable mclk during suspend */
+		clk_disable_unprepare(sii902x->audio.mclk);
+	}
 
 	return 0;
 }
