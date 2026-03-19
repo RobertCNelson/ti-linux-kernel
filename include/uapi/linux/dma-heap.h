@@ -39,6 +39,25 @@ struct dma_heap_allocation_data {
 	__u64 heap_flags;
 };
 
+/**
+ * struct dma_heap_export_data - metadata passed from userspace for export
+ * @offset:		offset from heap base
+ * @len:		size of the allocation
+ * @fd:			will be populated with a fd which provides the
+ *			handle to the allocated dma-buf
+ * @fd_flags:		file descriptor flags used when allocating
+ * @heap_flags:		flags passed to heap
+ *
+ * Provided by userspace as an argument to the ioctl
+ */
+struct dma_heap_export_data {
+	__u64 offset;
+	__u64 len;
+	__u32 fd;
+	__u32 fd_flags;
+	__u64 heap_flags;
+};
+
 #define DMA_HEAP_IOC_MAGIC		'H'
 
 /**
@@ -49,5 +68,14 @@ struct dma_heap_allocation_data {
  */
 #define DMA_HEAP_IOCTL_ALLOC	_IOWR(DMA_HEAP_IOC_MAGIC, 0x0,\
 				      struct dma_heap_allocation_data)
+
+/**
+ * DOC: DMA_HEAP_IOCTL_EXPORT - allocate memory at offset
+ *
+ * Takes a dma_heap_export_data struct and returns it with the fd field
+ * populated with the dmabuf handle of the export.
+ */
+#define DMA_HEAP_IOCTL_EXPORT	_IOWR(DMA_HEAP_IOC_MAGIC, 0x1,\
+				      struct dma_heap_export_data)
 
 #endif /* _UAPI_LINUX_DMABUF_POOL_H */

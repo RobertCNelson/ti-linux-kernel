@@ -305,8 +305,64 @@ free_buffer:
 	return ERR_PTR(ret);
 }
 
+static struct dma_buf *carveout_dma_heap_offset(struct dma_heap *heap,
+						u64 offset,
+						unsigned long len,
+						u32 fd_flags,
+						u64 heap_flags)
+{
+	struct carveout_dma_heap *carveout_dma_heap = dma_heap_get_drvdata(heap);
+	struct carveout_dma_heap_buffer *buffer;
+
+	DEFINE_DMA_BUF_EXPORT_INFO(exp_info);
+	struct dma_buf *dmabuf;
+	int ret = 0;
+
+	buffer = kzalloc(sizeof(*buffer), GFP_KERNEL);
+	if (!buffer)
+		return ERR_PTR(-ENOMEM);
+	buffer->pool = carveout_dma_heap->pool;
+	buffer->cached = carveout_dma_heap->cached;
+	INIT_LIST_HEAD(&buffer->attachments);
+	mutex_init(&buffer->attachments_lock);
+	mutex_init(&buffer->vmap_lock);
+	buffer->len = len;
+
+	struct genpool_data_fixed pool_data_fixed;
+	pool_data_fixed.offset = offset;
+	buffer->paddr = gen_pool_alloc_algo(buffer->pool, buffer->len,
+					    gen_pool_fixed_alloc,
+					    &pool_data_fixed);
+	if (!buffer->paddr) {
+		ret = -ENOMEM;
+		goto free_buffer;
+	}
+
+	/* create the dmabuf */
+	exp_info.exp_name = dma_heap_get_name(heap);
+	exp_info.ops = &carveout_dma_heap_buf_ops;
+	exp_info.size = buffer->len;
+	exp_info.flags = fd_flags;
+	exp_info.priv = buffer;
+	dmabuf = dma_buf_export(&exp_info);
+	if (IS_ERR(dmabuf)) {
+		ret = PTR_ERR(dmabuf);
+		goto free_pool;
+	}
+
+	return dmabuf;
+
+free_pool:
+	gen_pool_free(buffer->pool, buffer->paddr, buffer->len);
+free_buffer:
+	kfree(buffer);
+
+	return ERR_PTR(ret);
+}
+
 static struct dma_heap_ops carveout_dma_heap_ops = {
 	.allocate = carveout_dma_heap_allocate,
+	.export = carveout_dma_heap_offset,
 };
 
 static int carveout_dma_heap_export(phys_addr_t base, size_t size, const char *name, bool cached)
