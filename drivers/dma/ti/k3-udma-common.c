@@ -228,8 +228,8 @@ struct udma_desc *udma_alloc_tr_desc(struct udma_chan *uc,
 							   GFP_NOWAIT,
 							   &hwdesc->cppi5_desc_paddr);
 	} else {
-		hwdesc->cppi5_desc_size = cppi5_trdesc_calc_size(tr_size,
-								 tr_count);
+		hwdesc->cppi5_desc_size = cppi5_trdesc_calc_size(tr_count,
+								 tr_size);
 		hwdesc->cppi5_desc_size = ALIGN(hwdesc->cppi5_desc_size,
 						uc->ud->desc_align);
 		hwdesc->cppi5_desc_vaddr = dma_alloc_coherent(uc->ud->dev,
@@ -1776,7 +1776,7 @@ int udma_setup_rx_flush(struct udma_dev *ud)
 	/* Set up descriptor to be used for TR mode */
 	hwdesc = &rx_flush->hwdescs[0];
 	tr_size = sizeof(struct cppi5_tr_type1_t);
-	hwdesc->cppi5_desc_size = cppi5_trdesc_calc_size(tr_size, 1);
+	hwdesc->cppi5_desc_size = cppi5_trdesc_calc_size(1, tr_size);
 	hwdesc->cppi5_desc_size = ALIGN(hwdesc->cppi5_desc_size,
 					ud->desc_align);
 
