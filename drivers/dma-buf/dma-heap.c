@@ -76,6 +76,47 @@ static int dma_heap_buffer_alloc(struct dma_heap *heap, size_t len,
 	return fd;
 }
 
+static int dma_heap_buffer_export(struct dma_heap *heap,
+				  u64 offset,
+				  size_t len,
+				  u32 fd_flags,
+				  u64 heap_flags)
+{
+	struct dma_buf *dmabuf;
+	int fd;
+
+	/* Not all Heaps support export at offset */
+	if (!heap->ops->export) {
+		pr_err("dma_heap: heap \"%s\" does not support export offsets\n", heap->name);
+		return -EINVAL;
+	}
+
+	/*
+	 * Allocations from all heaps have to begin
+	 * and end on page boundaries.
+	 */
+	if (!PAGE_ALIGNED(offset)) {
+		pr_err("dma_heap: export address not page aligned\n");
+		return -EINVAL;
+	}
+	len = PAGE_ALIGN(len);
+	if (!len) {
+		pr_err("dma_heap: export length smaller than single page\n");
+		return -EINVAL;
+	}
+
+	dmabuf = heap->ops->export(heap, offset, len, fd_flags, heap_flags);
+	if (IS_ERR(dmabuf))
+		return PTR_ERR(dmabuf);
+
+	fd = dma_buf_fd(dmabuf, fd_flags);
+	if (fd < 0) {
+		dma_buf_put(dmabuf);
+		/* just return, as put will call release and that will free */
+	}
+	return fd;
+}
+
 static int dma_heap_open(struct inode *inode, struct file *file)
 {
 	struct dma_heap *heap;
@@ -119,8 +160,36 @@ static long dma_heap_ioctl_allocate(struct file *file, void *data)
 	return 0;
 }
 
+static long dma_heap_ioctl_export(struct file *file, void *data)
+{
+	struct dma_heap_export_data *heap_export = data;
+	struct dma_heap *heap = file->private_data;
+	int fd;
+
+	if (heap_export->fd)
+		return -EINVAL;
+
+	if (heap_export->fd_flags & ~DMA_HEAP_VALID_FD_FLAGS)
+		return -EINVAL;
+
+	if (heap_export->heap_flags & ~DMA_HEAP_VALID_HEAP_FLAGS)
+		return -EINVAL;
+
+	fd = dma_heap_buffer_export(heap, heap_export->offset,
+				    heap_export->len,
+				    heap_export->fd_flags,
+				    heap_export->heap_flags);
+	if (fd < 0)
+		return fd;
+
+	heap_export->fd = fd;
+
+	return 0;
+}
+
 static unsigned int dma_heap_ioctl_cmds[] = {
 	DMA_HEAP_IOCTL_ALLOC,
+	DMA_HEAP_IOCTL_EXPORT,
 };
 
 static long dma_heap_ioctl(struct file *file, unsigned int ucmd,
@@ -169,6 +238,9 @@ static long dma_heap_ioctl(struct file *file, unsigned int ucmd,
 	switch (kcmd) {
 	case DMA_HEAP_IOCTL_ALLOC:
 		ret = dma_heap_ioctl_allocate(file, kdata);
+		break;
+	case DMA_HEAP_IOCTL_EXPORT:
+		ret = dma_heap_ioctl_export(file, kdata);
 		break;
 	default:
 		ret = -ENOTTY;
