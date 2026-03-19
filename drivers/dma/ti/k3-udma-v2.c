@@ -685,7 +685,7 @@ static int bcdma_v2_alloc_chan_resources(struct dma_chan *chan)
 	uc->dma_dev = dmaengine_get_dma_device(chan);
 	if (uc->config.dir == DMA_MEM_TO_MEM  && !uc->config.tr_trigger_type) {
 		uc->config.hdesc_size =
-			cppi5_trdesc_calc_size(sizeof(struct cppi5_tr_type15_t), 2);
+			cppi5_trdesc_calc_size(2, sizeof(struct cppi5_tr_type15_t));
 
 		uc->hdesc_pool = dma_pool_create(uc->name, ud->ddev.dev,
 						 uc->config.hdesc_size,
