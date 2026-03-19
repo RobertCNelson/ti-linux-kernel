@@ -1219,7 +1219,6 @@ static struct snd_soc_dai_driver taa5x1x_dai = {
 			.formats = TAC5X1X_FORMATS,
 			},
 	.ops = &tac5x1x_ops,
-	.symmetric_rate = 1,
 };
 
 static struct snd_soc_dai_driver tad5x1x_dai = {
@@ -1239,7 +1238,6 @@ static struct snd_soc_dai_driver tad5x1x_dai = {
 			.formats = TAC5X1X_FORMATS,
 			},
 	.ops = &tac5x1x_ops,
-	.symmetric_rate = 1,
 };
 
 static void tac5x1x_setup_gpios(struct snd_soc_component *component)
