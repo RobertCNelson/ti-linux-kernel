@@ -32,7 +32,7 @@
 		regulator-max-microvolt = <1800000>;
 		vin-supply = <&wlan_lten>;
 		enable-active-high;
-		gpios = <&main_gpio0 51 GPIO_ACTIVE_HIGH>;
+		gpios = <&gpio0 51 GPIO_ACTIVE_HIGH>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&wlan_en_pins_default>;
 	};
@@ -84,7 +84,7 @@
 		reg = <2>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&main_wlirq_pins_default>;
-		interrupt-parent = <&main_gpio0>;
+		interrupt-parent = <&gpio0>;
 		interrupts = <52 IRQ_TYPE_EDGE_FALLING>;
 	};
 };
@@ -98,7 +98,7 @@
 		};
 };
 
-&main_uart1 {
+&uart1 {
 	status = "okay";
 
 	bluetooth {
