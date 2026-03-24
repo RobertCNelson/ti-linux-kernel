@@ -112,6 +112,10 @@
 	pinctrl-names = "default", "wakeup";
 	pinctrl-0 = <&mcu_mcan0_tx_pins_default>, <&mcu_mcan0_rx_pins_default>;
 	pinctrl-1 = <&mcu_mcan0_tx_pins_default>, <&mcu_mcan0_rx_pins_wakeup>;
+	wakeup-source = <&system_partial_io>,
+                        <&system_deep_sleep>,
+                        <&system_mcu_only>,
+                        <&system_standby>;
 	status = "okay";
 };
 
@@ -119,5 +123,9 @@
 	pinctrl-names = "default", "wakeup";
 	pinctrl-0 = <&mcu_mcan1_tx_pins_default>, <&mcu_mcan1_rx_pins_default>;
 	pinctrl-1 = <&mcu_mcan1_tx_pins_default>, <&mcu_mcan1_rx_pins_wakeup>;
+	wakeup-source = <&system_partial_io>,
+                        <&system_deep_sleep>,
+                        <&system_mcu_only>,
+                        <&system_standby>;
 	status = "okay";
 };
