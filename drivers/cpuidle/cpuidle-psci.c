@@ -246,6 +246,8 @@ static int psci_dt_cpu_init_topology(struct cpuidle_driver *drv,
 				     struct psci_cpuidle_data *data,
 				     unsigned int state_count, int cpu)
 {
+	int i;
+
 	/* Currently limit the hierarchical topology to be used in OSI mode. */
 	if (!psci_has_osi_support())
 		return 0;
@@ -257,14 +259,22 @@ static int psci_dt_cpu_init_topology(struct cpuidle_driver *drv,
 	psci_cpuidle_use_syscore = true;
 
 	/*
-	 * Using the deepest state for the CPU to trigger a potential selection
-	 * of a shared state for the domain, assumes the domain states are all
-	 * deeper states. On PREEMPT_RT the hierarchical topology is limited to
-	 * s2ram and s2idle.
+	 * Assign the domain-aware callbacks to all CPU idle states so that the
+	 * domain-idle-state logic is triggered regardless of which CPU idle
+	 * state is selected.
+	 *
+	 * For s2idle, enter_s2idle uses dev_pm_genpd_suspend() which is safe
+	 * on PREEMPT_RT. find_deepest_state() will pick the deepest state
+	 * whose exit latency fits within the active QoS constraint.
+	 *
+	 * For the normal idle path, enter uses pm_runtime_put_sync_suspend()
+	 * which may sleep and is therefore not used on PREEMPT_RT.
 	 */
-	drv->states[state_count - 1].enter_s2idle = psci_enter_s2idle_domain_idle_state;
-	if (!IS_ENABLED(CONFIG_PREEMPT_RT))
-		drv->states[state_count - 1].enter = psci_enter_domain_idle_state;
+	for (i = 1; i < state_count; i++) {
+		drv->states[i].enter_s2idle = psci_enter_s2idle_domain_idle_state;
+		if (!IS_ENABLED(CONFIG_PREEMPT_RT))
+			drv->states[i].enter = psci_enter_domain_idle_state;
+	}
 
 	return 0;
 }
