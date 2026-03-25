@@ -263,12 +263,8 @@ static int psci_dt_cpu_init_topology(struct cpuidle_driver *drv,
 	 * s2ram and s2idle.
 	 */
 	drv->states[state_count - 1].enter_s2idle = psci_enter_s2idle_domain_idle_state;
-	if (!IS_ENABLED(CONFIG_PREEMPT_RT)) {
-		if (state_count >= 2)
-			drv->states[1].enter = psci_enter_domain_idle_state;
-		else
-			drv->states[state_count - 1].enter = psci_enter_domain_idle_state;
-	}
+	if (!IS_ENABLED(CONFIG_PREEMPT_RT))
+		drv->states[state_count - 1].enter = psci_enter_domain_idle_state;
 
 	return 0;
 }
