@@ -1274,6 +1274,8 @@
 		power-domains = <&k3_pds 237 TI_SCI_PD_EXCLUSIVE>,
 				<&k3_pds 242 TI_SCI_PD_EXCLUSIVE>;
 		power-domain-names = "a", "b";
+		assigned-clocks = <&k3_clks 237 3>;
+		assigned-clock-rates = <800000000>;
 	};
 
 	vpu: video-codec@30210000 {
