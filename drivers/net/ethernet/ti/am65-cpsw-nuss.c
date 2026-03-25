@@ -1834,6 +1834,7 @@ static int am65_cpsw_nuss_tx_compl_packets(struct am65_cpsw_common *common,
 	struct am65_cpsw_tx_chn *tx_chn;
 	struct netdev_queue *netif_txq;
 	unsigned int total_bytes = 0;
+	struct am65_cpsw_port *port;
 	struct net_device *ndev;
 	int xsk_frames_done = 0;
 	struct xdp_frame *xdpf;
@@ -1921,10 +1922,10 @@ static int am65_cpsw_nuss_tx_compl_packets(struct am65_cpsw_common *common,
 		if (xsk_uses_need_wakeup(tx_chn->xsk_pool))
 			xsk_set_tx_need_wakeup(tx_chn->xsk_pool);
 
-		ndev = common->ports[tx_chn->xsk_port_id].ndev;
-		netif_txq = netdev_get_tx_queue(ndev, chn);
+		port = am65_common_get_port(common, tx_chn->xsk_port_id);
+		netif_txq = netdev_get_tx_queue(port->ndev, chn);
 		txq_trans_cond_update(netif_txq);
-		am65_cpsw_xsk_xmit_zc(ndev, tx_chn);
+		am65_cpsw_xsk_xmit_zc(port->ndev, tx_chn);
 	}
 
 	dev_dbg(dev, "%s:%u pkt:%d\n", __func__, chn, num_tx);
