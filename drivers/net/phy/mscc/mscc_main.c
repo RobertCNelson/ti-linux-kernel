@@ -2209,7 +2209,7 @@ static unsigned int vsc85xx_inband_caps(struct phy_device *phydev,
 	    interface != PHY_INTERFACE_MODE_QSGMII)
 		return 0;
 
-	return LINK_INBAND_DISABLE | LINK_INBAND_ENABLE;
+	return LINK_INBAND_ENABLE;
 }
 
 static int vsc85xx_config_inband(struct phy_device *phydev, unsigned int modes)
