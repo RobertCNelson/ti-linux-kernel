@@ -441,6 +441,15 @@ static int ti_cpufreq_get_rev(struct ti_cpufreq_data *opp_data,
 		 */
 		*revision_value = 0x1;
 		goto done;
+	} else if (opp_data->soc_data == &am625_soc_data ||
+		   opp_data->soc_data == &am62a7_soc_data ||
+		   opp_data->soc_data == &am62l3_soc_data ||
+		   opp_data->soc_data == &am62p5_soc_data) {
+		/*
+		 * For K3 SoCs, if soc_device_match fails, socinfo hasn't
+		 * probed yet. Defer probe to wait for it.
+		 */
+		return -EPROBE_DEFER;
 	}
 
 	ret = regmap_read(opp_data->syscon, opp_data->soc_data->rev_offset,
