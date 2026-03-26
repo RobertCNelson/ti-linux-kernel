@@ -1131,8 +1131,10 @@ static void phylink_pcs_neg_mode(struct phylink *pl, struct phylink_pcs *pcs,
 				pl->phy_ib_mode = LINK_INBAND_DISABLE;
 			else if (phy_ib_caps & LINK_INBAND_BYPASS)
 				pl->phy_ib_mode = LINK_INBAND_BYPASS;
-			else if (phy_ib_caps & LINK_INBAND_ENABLE)
+			else if (phy_ib_caps & LINK_INBAND_ENABLE) {
 				phy_ib_only = true;
+				pl->phy_ib_mode = LINK_INBAND_ENABLE;
+			}
 		}
 
 		/* If either the PCS or PHY requires inband to be enabled,
