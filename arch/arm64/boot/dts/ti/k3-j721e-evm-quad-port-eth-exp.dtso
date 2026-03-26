@@ -42,7 +42,8 @@
 	phy-handle = <&cpsw9g_phy1>;
 	phy-mode = "qsgmii";
 	mac-address = [00 00 00 00 00 00];
-	phys = <&cpsw0_phy_gmii_sel 2>;
+	phys = <&cpsw0_phy_gmii_sel 2>, <&serdes0_qsgmii_link>;
+	phy-names = "mac", "serdes";
 };
 
 &cpsw0_port3 {
