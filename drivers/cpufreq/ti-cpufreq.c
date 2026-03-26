@@ -12,6 +12,7 @@
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/of.h>
+#include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/pm_opp.h>
 #include <linux/regmap.h>
@@ -111,6 +112,7 @@ struct ti_cpufreq_data {
 	struct device_node *opp_node;
 	struct regmap *syscon;
 	const struct ti_cpufreq_soc_data *soc_data;
+	struct device_link *soc_link;
 };
 
 static unsigned long amx3_efuse_xlate(struct ti_cpufreq_data *opp_data,
@@ -542,6 +544,7 @@ static int ti_cpufreq_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	opp_data->soc_data = match->data;
+	platform_set_drvdata(pdev, opp_data);
 
 	opp_data->cpu_dev = get_cpu_device(0);
 	if (!opp_data->cpu_dev) {
@@ -559,6 +562,42 @@ static int ti_cpufreq_probe(struct platform_device *pdev)
 	ret = ti_cpufreq_setup_syscon_register(opp_data);
 	if (ret)
 		goto fail_put_node;
+
+	/* Create device link to k3-socinfo if specified in DT */
+	if (opp_data->soc_data == &am625_soc_data ||
+	    opp_data->soc_data == &am62a7_soc_data ||
+	    opp_data->soc_data == &am62l3_soc_data ||
+	    opp_data->soc_data == &am62p5_soc_data) {
+		struct device_node *socinfo_np;
+
+		socinfo_np = of_parse_phandle(opp_data->opp_node, "ti,soc-info", 0);
+		if (socinfo_np) {
+			struct platform_device *socinfo_pdev;
+			struct device_link *link;
+
+			socinfo_pdev = of_find_device_by_node(socinfo_np);
+			of_node_put(socinfo_np);
+
+			if (!socinfo_pdev) {
+				ret = -EPROBE_DEFER;
+				goto fail_put_node;
+			}
+
+			if (!socinfo_pdev->dev.driver) {
+				put_device(&socinfo_pdev->dev);
+				ret = -EPROBE_DEFER;
+				goto fail_put_node;
+			}
+
+			link = device_link_add(opp_data->cpu_dev,
+					       &socinfo_pdev->dev,
+					       DL_FLAG_STATELESS);
+			if (link)
+				opp_data->soc_link = link;
+
+			put_device(&socinfo_pdev->dev);
+		}
+	}
 
 	/*
 	 * OPPs determine whether or not they are supported based on
@@ -600,6 +639,14 @@ fail_put_node:
 	return ret;
 }
 
+static void ti_cpufreq_remove(struct platform_device *pdev)
+{
+	struct ti_cpufreq_data *opp_data = platform_get_drvdata(pdev);
+
+	if (opp_data && opp_data->soc_link)
+		device_link_del(opp_data->soc_link);
+}
+
 static int __init ti_cpufreq_init(void)
 {
 	const struct of_device_id *match;
@@ -616,6 +663,7 @@ module_init(ti_cpufreq_init);
 
 static struct platform_driver ti_cpufreq_driver = {
 	.probe = ti_cpufreq_probe,
+	.remove = ti_cpufreq_remove,
 	.driver = {
 		.name = "ti-cpufreq",
 	},
