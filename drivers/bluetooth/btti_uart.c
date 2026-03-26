@@ -679,17 +679,11 @@ static int btti_suspend_device(struct device *dev)
 
 	enable_irq(gpiod_to_irq(bdev->host_wakeup));
 
-	ret = serdev_device_set_rts(serdev, false);
-		if (ret < 0)
-			goto out_err;
-
 	return 0;
 
 out_err:
 	if (bdev->pins_runtime)
 		pinctrl_select_state(bdev->pinctrl, bdev->pins_runtime);
-
-	serdev_device_set_rts(serdev, true);
 
 	return ret;
 }
@@ -698,7 +692,7 @@ static int btti_resume_device(struct device *dev)
 {
 	struct btti_uart_dev *bdev = dev_get_drvdata(dev);
 	struct serdev_device *serdev = bdev->serdev;
-	int ret;
+	int ret = 0;
 
 	disable_irq_nosync(gpiod_to_irq(bdev->host_wakeup));
 
@@ -708,7 +702,7 @@ static int btti_resume_device(struct device *dev)
 			return ret;
 	}
 
-	return serdev_device_set_rts(serdev, true);
+	return ret;
 }
 
 #ifdef CONFIG_OF
