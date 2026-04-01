@@ -41,6 +41,39 @@
 		bootph-all;
 	};
 
+	/* RTC GPIO 0 - Connected to joystick */
+	rtc_gpio0 {
+		compatible = "gpio-keys";
+		button-rtc0 {
+			label = "rtc_joystick_wkup";
+			wakeup-source;
+			linux,code = <KEY_WAKEUP>;
+			gpios = <&wkup_rtc0 0 GPIO_ACTIVE_LOW>;
+		};
+	};
+
+	/* RTC GPIO 1 - Connected to Mikrobus and IMU sensor */
+	rtc_gpio1 {
+		compatible = "gpio-keys";
+		button-rtc1 {
+			label = "rtc_mikrobus_imu_wkup";
+			wakeup-source;
+			linux,code = <KEY_WAKEUP>;
+			gpios = <&wkup_rtc0 1 GPIO_ACTIVE_HIGH>;
+		};
+	};
+
+	/* RTC GPIO 2 - Connected to wkup io daisy chain */
+	rtc_gpio2 {
+		compatible = "gpio-keys";
+		button-rtc2 {
+			label = "rtc_io_daisy_wkup";
+			wakeup-source;
+			linux,code = <KEY_WAKEUP>;
+			gpios = <&wkup_rtc0 2 GPIO_ACTIVE_HIGH>;
+		};
+	};
+
 	gpio_keys: gpio-keys {
 		compatible = "gpio-keys";
 		autorepeat;
