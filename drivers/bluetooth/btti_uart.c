@@ -668,7 +668,6 @@ static void btti_uart_remove(struct serdev_device *serdev)
 static int btti_suspend_device(struct device *dev)
 {
 	struct btti_uart_dev *bdev = dev_get_drvdata(dev);
-	struct serdev_device *serdev = bdev->serdev;
 	int ret;
 
 	if (bdev->pins_sleep) {
@@ -691,7 +690,6 @@ out_err:
 static int btti_resume_device(struct device *dev)
 {
 	struct btti_uart_dev *bdev = dev_get_drvdata(dev);
-	struct serdev_device *serdev = bdev->serdev;
 	int ret = 0;
 
 	disable_irq_nosync(gpiod_to_irq(bdev->host_wakeup));
