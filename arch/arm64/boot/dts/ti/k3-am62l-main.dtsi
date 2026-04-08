@@ -418,8 +418,8 @@
 			cdns,fifo-width = <4>;
 			cdns,trigger-address = <0x0>;
 			cdns,phase-detect-selector = <2>;
-			clocks = <&scmi_clk 134>;
-			assigned-clocks = <&scmi_clk 134>;
+			clocks = <&scmi_clk 136>;
+			assigned-clocks = <&scmi_clk 136>;
 			assigned-clock-rates = <166666666>;
 			power-domains = <&scmi_pds 32>;
 			#address-cells = <1>;
