@@ -73,6 +73,12 @@
 			reg = <0x00 0xa0100000 0x00 0xf00000>;
 			no-map;
 		};
+
+		lpm_memory_region: lpm-memory@a7000000 {
+			reg = <0x00 0xa7000000 0x00 0x00300000>;
+			no-map;
+			bootph-all;
+		};
 	};
 
 	vmain_pd: regulator-0 {
