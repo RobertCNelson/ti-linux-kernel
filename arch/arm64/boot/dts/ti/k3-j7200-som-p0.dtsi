@@ -40,6 +40,12 @@
 			reg = <0x00 0xa0100000 0x00 0xf00000>;
 			no-map;
 		};
+
+		lpm_memory_region: lpm-memory@a4800000 {
+			reg = <0x00 0xa4800000 0x00 0x00300000>;
+			no-map;
+			bootph-all;
+		};
 	};
 
 	mux0: mux-controller-0 {
