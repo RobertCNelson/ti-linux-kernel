@@ -39,6 +39,12 @@
 			reg = <0x00 0xab100000 0x00 0xf00000>;
 			no-map;
 		};
+
+		lpm_memory_region: lpm-memory@ac000000 {
+			reg = <0x00 0xac000000 0x00 0x00300000>;
+			no-map;
+			bootph-all;
+		};
 	};
 };
 
