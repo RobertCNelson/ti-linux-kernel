@@ -23,10 +23,13 @@
 		device_type = "memory";
 		bootph-all;
 	};
+};
 
-	reserved_memory: reserved-memory {
-		#address-cells = <2>;
-		#size-cells = <2>;
+&reserved_memory {
+	lpm_memory_region: lpm-memory@ac000000 {
+		reg = <0x00 0xac000000 0x00 0x00300000>;
+		no-map;
+		bootph-all;
 	};
 };
 
