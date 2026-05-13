@@ -106,6 +106,25 @@
 #define SN_PWM_EN_INV_REG			0xA5
 #define  SN_PWM_INV_MASK			BIT(0)
 #define  SN_PWM_EN_MASK				BIT(1)
+
+/* IRQ enable registers (0xE0-0xE9): control which events assert the IRQ pin */
+#define SN_IRQ_EN_REG				0xE0
+#define  SN_IRQ_OUTPUT_EN			BIT(0)
+#define SN_HPD_EVENT_EN_REG			0xE6
+#define  SN_HPD_IRQ_HPD_EN			BIT(0)
+#define  SN_HPD_INSERTION_EN			BIT(1)
+#define  SN_HPD_REMOVAL_EN			BIT(2)
+#define  SN_HPD_REPLUG_EN			BIT(3)
+
+/* IRQ status registers (0xF0-0xF8): write-1-to-clear */
+#define SN_IRQ_STATUS_REG			0xF0
+#define SN_IRQ_STATUS2_REG			0xF2
+#define SN_IRQ_DP_STATUS_REG			0xF5
+#define  SN_F5_IRQ_HPD				BIT(0)
+#define  SN_F5_HPD_INSERTION			BIT(1)
+#define  SN_F5_HPD_REMOVAL			BIT(2)
+#define  SN_F5_HPD_REPLUG			BIT(3)
+
 #define SN_AUX_CMD_STATUS_REG			0xF4
 #define  AUX_IRQ_STATUS_AUX_RPLY_TOUT		BIT(3)
 #define  AUX_IRQ_STATUS_AUX_SHORT		BIT(5)
@@ -191,6 +210,17 @@ struct ti_sn65dsi86 {
 	u8				ln_polrs;
 	bool				comms_enabled;
 	struct mutex			comms_mutex;
+
+	/*
+	 * bridge_enabled is set true by atomic_enable() and false by
+	 * atomic_disable().  When the cable is replugged while bridge_enabled
+	 * is true the upstream pipeline (DISPC/DSI/DPHY) is still active, so
+	 * the HPD work can retrain the DP link and re-enable the video stream
+	 * directly without waiting for a DRM atomic commit.
+	 */
+	bool				bridge_enabled;
+	unsigned int			cached_bpp;
+	struct work_struct		hpd_work;
 
 #if defined(CONFIG_OF_GPIO)
 	struct gpio_chip		gchip;
@@ -807,6 +837,14 @@ static void ti_sn_bridge_atomic_disable(struct drm_bridge *bridge,
 {
 	struct ti_sn65dsi86 *pdata = bridge_to_ti_sn65dsi86(bridge);
 
+	/*
+	 * Mark the upstream pipeline as inactive before disabling the stream.
+	 * The HPD work checks this flag before attempting link retraining, so
+	 * clearing it here prevents a race where a replug interrupt fires
+	 * during teardown and the work tries to retrain a dying pipeline.
+	 */
+	pdata->bridge_enabled = false;
+
 	/* disable video stream */
 	regmap_update_bits(pdata->regmap, SN_ENH_FRAME_REG, VSTREAM_ENABLE, 0);
 }
@@ -1062,39 +1100,32 @@ exit:
 	return ret;
 }
 
-static void ti_sn_bridge_atomic_enable(struct drm_bridge *bridge,
-				       struct drm_bridge_state *old_bridge_state)
+/*
+ * ti_sn_bridge_link_train - configure lanes, scrambler, data format and
+ *                           run DP link training at the minimum viable rate.
+ *
+ * Shared by atomic_enable() (bpp from connector) and ti_sn_bridge_hpd_work()
+ * (bpp cached from the last successful atomic_enable).
+ *
+ * Returns 0 on success, negative errno on link training failure.
+ */
+static int ti_sn_bridge_link_train(struct ti_sn65dsi86 *pdata, unsigned int bpp)
 {
-	struct ti_sn65dsi86 *pdata = bridge_to_ti_sn65dsi86(bridge);
-	struct drm_connector *connector;
 	const char *last_err_str = "No supported DP rate";
 	unsigned int valid_rates;
 	int dp_rate_idx;
 	unsigned int val;
 	int ret = -EINVAL;
-	int max_dp_lanes;
-	unsigned int bpp;
-
-	connector = drm_atomic_get_new_connector_for_encoder(old_bridge_state->base.state,
-							     bridge->encoder);
-	if (!connector) {
-		dev_err_ratelimited(pdata->dev, "Could not get the connector\n");
-		return;
-	}
-
-	max_dp_lanes = ti_sn_get_max_lanes(pdata);
-	pdata->dp_lanes = min(pdata->dp_lanes, max_dp_lanes);
 
 	/* DSI_A lane config */
 	val = CHA_DSI_LANES(SN_MAX_DP_LANES - pdata->dsi->lanes);
 	regmap_update_bits(pdata->regmap, SN_DSI_LANES_REG,
 			   CHA_DSI_LANES_MASK, val);
-
 	regmap_write(pdata->regmap, SN_LN_ASSIGN_REG, pdata->ln_assign);
 	regmap_update_bits(pdata->regmap, SN_ENH_FRAME_REG, LN_POLRS_MASK,
 			   pdata->ln_polrs << LN_POLRS_OFFSET);
 
-	/* set dsi clk frequency value */
+	/* set DSI clock frequency value */
 	ti_sn_bridge_set_dsi_rate(pdata);
 
 	/*
@@ -1109,7 +1140,6 @@ static void ti_sn_bridge_atomic_enable(struct drm_bridge *bridge,
 	if (pdata->bridge.type == DRM_MODE_CONNECTOR_eDP) {
 		drm_dp_dpcd_writeb(&pdata->aux, DP_EDP_CONFIGURATION_SET,
 				   DP_ALTERNATE_SCRAMBLER_RESET_ENABLE);
-
 		regmap_update_bits(pdata->regmap, SN_TRAINING_SETTING_REG,
 				   SCRAMBLE_DISABLE, 0);
 	} else {
@@ -1117,33 +1147,58 @@ static void ti_sn_bridge_atomic_enable(struct drm_bridge *bridge,
 				   SCRAMBLE_DISABLE, SCRAMBLE_DISABLE);
 	}
 
-	bpp = ti_sn_bridge_get_bpp(connector);
 	/* Set the DP output format (18 bpp or 24 bpp) */
 	val = bpp == 18 ? BPP_18_RGB : 0;
 	regmap_update_bits(pdata->regmap, SN_DATA_FORMAT_REG, BPP_18_RGB, val);
 
 	/* DP lane config */
 	val = DP_NUM_LANES(min(pdata->dp_lanes, 3));
-	regmap_update_bits(pdata->regmap, SN_SSC_CONFIG_REG, DP_NUM_LANES_MASK,
-			   val);
+	regmap_update_bits(pdata->regmap, SN_SSC_CONFIG_REG,
+			   DP_NUM_LANES_MASK, val);
 
 	valid_rates = ti_sn_bridge_read_valid_rates(pdata);
 
-	/* Train until we run out of rates */
 	for (dp_rate_idx = ti_sn_bridge_calc_min_dp_rate_idx(pdata, bpp);
 	     dp_rate_idx < ARRAY_SIZE(ti_sn_bridge_dp_rate_lut);
 	     dp_rate_idx++) {
 		if (!(valid_rates & BIT(dp_rate_idx)))
 			continue;
-
 		ret = ti_sn_link_training(pdata, dp_rate_idx, &last_err_str);
 		if (!ret)
 			break;
 	}
-	if (ret) {
-		DRM_DEV_ERROR(pdata->dev, "%s (%d)\n", last_err_str, ret);
+
+	if (ret)
+		DRM_DEV_ERROR(pdata->dev, "link training failed: %s\n",
+			      last_err_str);
+
+	return ret;
+}
+
+static void ti_sn_bridge_atomic_enable(struct drm_bridge *bridge,
+				       struct drm_bridge_state *old_bridge_state)
+{
+	struct ti_sn65dsi86 *pdata = bridge_to_ti_sn65dsi86(bridge);
+	struct drm_connector *connector;
+	int max_dp_lanes;
+	unsigned int bpp;
+	int ret;
+
+	connector = drm_atomic_get_new_connector_for_encoder(old_bridge_state->base.state,
+							     bridge->encoder);
+	if (!connector) {
+		dev_err_ratelimited(pdata->dev, "Could not get the connector\n");
 		return;
 	}
+
+	max_dp_lanes = ti_sn_get_max_lanes(pdata);
+	pdata->dp_lanes = min(pdata->dp_lanes, max_dp_lanes);
+
+	bpp = ti_sn_bridge_get_bpp(connector);
+
+	ret = ti_sn_bridge_link_train(pdata, bpp);
+	if (ret)
+		return;
 
 	/* config video parameters */
 	ti_sn_bridge_set_video_timings(pdata);
@@ -1151,6 +1206,15 @@ static void ti_sn_bridge_atomic_enable(struct drm_bridge *bridge,
 	/* enable video stream */
 	regmap_update_bits(pdata->regmap, SN_ENH_FRAME_REG, VSTREAM_ENABLE,
 			   VSTREAM_ENABLE);
+
+	/*
+	 * Mark the upstream pipeline as active.  ti_sn_bridge_hpd_work()
+	 * checks this flag to decide whether a replug can be handled by
+	 * retraining the link directly (upstream running) or must wait for
+	 * the DRM atomic commit path (first plug / upstream off).
+	 */
+	pdata->cached_bpp = bpp;
+	pdata->bridge_enabled = true;
 }
 
 static void ti_sn_bridge_atomic_pre_enable(struct drm_bridge *bridge,
@@ -1171,6 +1235,14 @@ static void ti_sn_bridge_atomic_post_disable(struct drm_bridge *bridge,
 					     struct drm_bridge_state *old_bridge_state)
 {
 	struct ti_sn65dsi86 *pdata = bridge_to_ti_sn65dsi86(bridge);
+
+	/*
+	 * bridge_enabled was already cleared in atomic_disable().  Wait for
+	 * any HPD work that was already running to finish before tearing down
+	 * the PLL and power.  cancel_work_sync() returns immediately if no
+	 * work is pending or running.
+	 */
+	cancel_work_sync(&pdata->hpd_work);
 
 	/* semi auto link training mode OFF */
 	regmap_write(pdata->regmap, SN_ML_TX_MODE_REG, 0);
@@ -1220,22 +1292,123 @@ static void ti_sn65dsi86_debugfs_init(struct drm_bridge *bridge, struct dentry *
 	debugfs_create_file("status", 0600, debugfs, pdata, &status_fops);
 }
 
+/*
+ * ti_sn_bridge_interrupt() - Handle HPD interrupt from sn65dsi86
+ *
+ * Called when the sn65dsi86 asserts its IRQ pin on an HPD state change
+ * (panel connected/disconnected/replugged).  Reads and clears the status
+ * registers, then notifies the DRM subsystem via the per-connector probe
+ * path so that epoch_counter is incremented and a fresh atomic commit is
+ * triggered.
+ */
+static irqreturn_t ti_sn_bridge_interrupt(int irq, void *data)
+{
+	struct ti_sn65dsi86 *pdata = data;
+
+	pm_runtime_get_sync(pdata->dev);
+
+	/*
+	 * Clear all IRQ status registers to de-assert the IRQ pin.
+	 *
+	 * The actual HPD state (connected/disconnected) is read by detect()
+	 * which is called inside drm_connector_helper_hpd_irq_event() below.
+	 */
+	regmap_write(pdata->regmap, SN_IRQ_STATUS_REG, 0xFF);
+	regmap_write(pdata->regmap, SN_IRQ_STATUS2_REG, 0xFF);
+	regmap_write(pdata->regmap, SN_IRQ_DP_STATUS_REG, 0xFF);
+
+	pm_runtime_put_autosuspend(pdata->dev);
+
+	/*
+	 * Schedule the HPD work function which will:
+	 *   - retrain the DP link directly if the upstream pipeline is active
+	 *   - notify DRM in all cases so userspace is informed of the change
+	 */
+	schedule_work(&pdata->hpd_work);
+
+	return IRQ_HANDLED;
+}
+
+/*
+ * ti_sn_bridge_hpd_work - HPD work function for link retraining on replug
+ *
+ * If bridge_enabled is false (first plug, or upstream already torn down),
+ * skip link training and proceed directly to the DRM notification so that
+ * userspace triggers a normal atomic_enable(), else retrain the link
+ * so that applications can resume directly after a replug.
+ */
+static void ti_sn_bridge_hpd_work(struct work_struct *work)
+{
+	struct ti_sn65dsi86 *pdata =
+		container_of(work, struct ti_sn65dsi86, hpd_work);
+	struct drm_connector *connector;
+	unsigned int hpd_status;
+	int ret;
+
+	pm_runtime_get_sync(pdata->dev);
+
+	/*
+	 * Read the hardware HPD state.  If the cable is not connected, or if
+	 * bridge_enabled is false (upstream not active), skip straight to the
+	 * DRM notification so the connector status is updated correctly.
+	 */
+	ret = regmap_read(pdata->regmap, SN_HPD_DISABLE_REG, &hpd_status);
+	if (ret || !(hpd_status & HPD_DEBOUNCED_STATE) || !pdata->bridge_enabled)
+		goto notify;
+
+	/*
+	 * Upstream pipeline (DISPC/DSI/DPHY) is still active â retrain the
+	 * DP link directly using cached bpp from the last atomic_enable.
+	 * ti_sn_bridge_set_video_timings() reads the current CRTC adjusted
+	 * mode which remains valid while bridge_enabled is true.
+	 */
+	ret = ti_sn_bridge_link_train(pdata, pdata->cached_bpp);
+	if (ret)
+		goto notify;
+
+	ti_sn_bridge_set_video_timings(pdata);
+
+	regmap_update_bits(pdata->regmap, SN_ENH_FRAME_REG,
+			   VSTREAM_ENABLE, VSTREAM_ENABLE);
+
+notify:
+	pm_runtime_put_autosuspend(pdata->dev);
+
+	/*
+	 * Notify DRM of the connector status change.  For the replug-while-
+	 * running case the display is already back up at this point; for the
+	 * first-plug / disconnect case this triggers the atomic commit path.
+	 */
+	if (pdata->bridge.dev && pdata->bridge.hpd_data) {
+		connector = (struct drm_connector *)pdata->bridge.hpd_data;
+		drm_connector_helper_hpd_irq_event(connector);
+	}
+}
+
 static void ti_sn_bridge_hpd_enable(struct drm_bridge *bridge)
 {
 	struct ti_sn65dsi86 *pdata = bridge_to_ti_sn65dsi86(bridge);
 
-	/*
-	 * Device needs to be powered on before reading the HPD state
-	 * for reliable hpd detection in ti_sn_bridge_detect() due to
-	 * the high debounce time.
-	 */
-
 	pm_runtime_get_sync(pdata->dev);
+
+	/*
+	 * Enable the chip IRQ output pin and HPD event interrupts.
+	 * Register 0xE6: selects which HPD events assert the IRQ output.
+	 *
+	 * Clear any stale status first so we do not immediately fire on enable.
+	 */
+	regmap_write(pdata->regmap, SN_IRQ_DP_STATUS_REG, 0xFF);
+	regmap_write(pdata->regmap, SN_HPD_EVENT_EN_REG,
+		     SN_HPD_INSERTION_EN | SN_HPD_REMOVAL_EN | SN_HPD_REPLUG_EN);
+	regmap_write(pdata->regmap, SN_IRQ_EN_REG, SN_IRQ_OUTPUT_EN);
 }
 
 static void ti_sn_bridge_hpd_disable(struct drm_bridge *bridge)
 {
 	struct ti_sn65dsi86 *pdata = bridge_to_ti_sn65dsi86(bridge);
+
+	regmap_write(pdata->regmap, SN_IRQ_EN_REG, 0);
+	regmap_write(pdata->regmap, SN_HPD_EVENT_EN_REG, 0);
 
 	pm_runtime_put_autosuspend(pdata->dev);
 }
@@ -1953,6 +2126,7 @@ static int ti_sn65dsi86_probe(struct i2c_client *client)
 	pdata->dev = dev;
 
 	mutex_init(&pdata->comms_mutex);
+	INIT_WORK(&pdata->hpd_work, ti_sn_bridge_hpd_work);
 
 	pdata->regmap = devm_regmap_init_i2c(client,
 					     &ti_sn65dsi86_regmap_config);
@@ -2003,6 +2177,18 @@ static int ti_sn65dsi86_probe(struct i2c_client *client)
 		ret = ti_sn65dsi86_add_aux_device(pdata, &pdata->pwm_aux, "pwm");
 		if (ret)
 			return ret;
+	}
+
+	if (client->irq > 0) {
+		ret = devm_request_threaded_irq(dev, client->irq,
+						NULL,
+						ti_sn_bridge_interrupt,
+						IRQF_ONESHOT,
+						"ti-sn65dsi86-hpd",
+						pdata);
+		if (ret)
+			dev_warn(dev, "Failed to request HPD IRQ %d: %d\n",
+				 client->irq, ret);
 	}
 
 	/*
