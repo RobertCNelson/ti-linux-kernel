@@ -38,11 +38,13 @@
 			AM62AX_IOPAD(0x01d0, PIN_INPUT, 7) /* (F14) UART0_CTSn.GPIO1_22 */
 			AM62AX_IOPAD(0x01d8, PIN_INPUT, 7) /* (B17) MCAN0_TX.GPIO1_24 */
 			AM62AX_IOPAD(0x01dc, PIN_INPUT, 7) /* (C18) MCAN0_RX.GPIO1_25 */
+			AM62AX_IOPAD(0x01f0, PIN_INPUT, 7) /* (B16) EXT_REFCLK1.GPIO1_30 */
 		>;
 	};
 
 	rpi_header_ehrpwm0_pins_default: rpi-header-ehrpwm0-default-pins {
 		pinctrl-single,pins = <
+
 			AM62AX_IOPAD(0x01ac, PIN_OUTPUT, 6) /* (B21) MCASP0_AFSR.EHRPWM0_A */
 			AM62AX_IOPAD(0x01b0, PIN_OUTPUT, 6) /* (A21) MCASP0_ACLKR.EHRPWM0_B */
 		>;
@@ -57,7 +59,7 @@
 };
 
 &main_uart1 {
-	/* Conflict: MCASP0_AFSR, MCASP0_ACLKR */
+	/* Conflict: MCASP0_AFSR, MCASP0_ACLKR, MCASP0_AXR2, MCASP0_AXR3 */
 	status = "disabled";
 };
 
