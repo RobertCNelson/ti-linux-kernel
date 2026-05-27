@@ -1980,7 +1980,8 @@ static int wave5_vpu_dec_job_ready(void *priv)
 			break;
 		} else if (inst->state == VPU_INST_STATE_PIC_RUN &&
 			   !wave5_is_draining_or_eos(inst) &&
-			   inst->queuing_fail) {
+			   inst->queuing_fail &&
+			   inst->dev->irq > 0) {
 			break;
 		}
 		ret = 1;
