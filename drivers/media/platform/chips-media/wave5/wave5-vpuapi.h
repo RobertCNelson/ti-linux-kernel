@@ -887,6 +887,7 @@ struct vpu_instance {
 	dma_addr_t *mapped_dma_addr;
 	unsigned int cap_io_mode;
 	struct mutex inst_lock;
+	bool queuing_fail;
 };
 
 void wave5_vdi_write_register(struct vpu_device *vpu_dev, u32 addr, u32 data);

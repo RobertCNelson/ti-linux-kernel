@@ -496,6 +496,8 @@ static void wave5_vpu_dec_finish_decode(struct vpu_instance *inst)
 		    q_status.instance_queue_count == 0)
 			v4l2_m2m_job_finish(inst->v4l2_m2m_dev, m2m_ctx);
 	}
+
+	inst->queuing_fail = false;
 }
 
 static int wave5_vpu_dec_querycap(struct file *file, void *fh, struct v4l2_capability *cap)
@@ -1892,6 +1894,7 @@ static void wave5_vpu_dec_device_run(void *priv)
 
 		if (fail_res == WAVE5_SYSERR_QUEUEING_FAIL) {
 			inst->retry = true;
+			inst->queuing_fail = true;
 		} else {
 			inst->retry = false;
 			if (!inst->eos)
@@ -1974,6 +1977,10 @@ static int wave5_vpu_dec_job_ready(void *priv)
 			    inst->empty_queue)) {
 			dev_dbg(inst->dev->dev,
 				"No bitstream data to decode!\n");
+			break;
+		} else if (inst->state == VPU_INST_STATE_PIC_RUN &&
+			   !wave5_is_draining_or_eos(inst) &&
+			   inst->queuing_fail) {
 			break;
 		}
 		ret = 1;
