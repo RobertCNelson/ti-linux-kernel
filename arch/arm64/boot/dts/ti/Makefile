@@ -44,6 +44,7 @@ k3-am62a7-sk-ub954-evm-ov2312-dtbs := k3-am62a7-sk.dtb \
 				      k3-fpdlink-ov2312-0-0.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk-csi2-ox05b1s.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk-ethfw.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk-m2-cc3351.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62a7-phyboard-lyra-rdk.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk-ethernet-dc01.dtbo
@@ -285,6 +286,8 @@ k3-am62a7-sk-csi2-tevi-ov5640-dtbs := k3-am62a7-sk.dtb \
 	k3-am62x-sk-csi2-tevi-ov5640.dtbo
 k3-am62a7-sk-ethernet-dc01-dtbs := k3-am62a7-sk.dtb \
 	k3-am62a7-sk-ethernet-dc01.dtbo
+k3-am62a7-sk-ethfw-dtbs := k3-am62a7-sk.dtb \
+	k3-am62a7-sk-ethfw.dtbo
 k3-am62a7-sk-fastboot-disable-hdmi-dtbs := k3-am62a7-sk.dtb \
 	k3-am62x-sk-fastboot-disable-hdmi.dtbo
 k3-am62a7-sk-hdmi-audio-dtbs := k3-am62a7-sk.dtb k3-am62x-sk-hdmi-audio.dtbo
@@ -445,6 +448,7 @@ dtb- += k3-am625-beagleplay-csi2-ov5640.dtb \
 	k3-am62-lp-sk-microtips-mf103hie-lcd2.dtb \
 	k3-am62a7-sk-csi2-imx219.dtb \
 	k3-am62a7-sk-csi2-ov5640.dtb \
+	k3-am62a7-sk-ethfw.dtb \
 	k3-am62a7-sk-fastboot-disable-hdmi.dtb \
 	k3-am62a7-sk-hdmi-audio.dtb \
 	k3-am62p5-sk-csi2-imx219.dtb \

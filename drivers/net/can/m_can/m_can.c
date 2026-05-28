@@ -1225,6 +1225,17 @@ static void m_can_coalescing_update(struct m_can_classdev *cdev, u32 ir)
 			      HRTIMER_MODE_REL);
 }
 
+static void m_can_tx_peripheral_submit(struct m_can_classdev *cdev)
+{
+	int ffs_idx;
+
+	ffs_idx = ffs(cdev->tx_peripheral_submit);
+	if (ffs_idx > 0) {
+		m_can_write(cdev, M_CAN_TXBAR, ffs_idx - 1);
+		cdev->tx_peripheral_submit &= cdev->tx_peripheral_submit - 1;
+	}
+}
+
 /* This interrupt handler is called either from the interrupt thread or a
  * hrtimer. This has implications like cancelling a timer won't be possible
  * blocking.
@@ -1290,6 +1301,11 @@ static int m_can_interrupt_handler(struct m_can_classdev *cdev)
 			m_can_finish_tx(cdev, 1, frame_len);
 		}
 	} else  {
+		if (cdev->is_peripheral && (ir & IR_TC)) {
+			if (cdev->tx_peripheral_submit > 0)
+				m_can_tx_peripheral_submit(cdev);
+		}
+
 		if (ir & (IR_TEFN | IR_TEFW)) {
 			/* New TX FIFO Element arrived */
 			ret = m_can_echo_tx_event(dev);
@@ -1956,8 +1972,7 @@ static void m_can_tx_submit(struct m_can_classdev *cdev)
 	if (!cdev->is_peripheral)
 		return;
 
-	m_can_write(cdev, M_CAN_TXBAR, cdev->tx_peripheral_submit);
-	cdev->tx_peripheral_submit = 0;
+	m_can_tx_peripheral_submit(cdev);
 }
 
 static void m_can_tx_work_queue(struct work_struct *ws)
