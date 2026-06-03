@@ -36,6 +36,13 @@
 #include "tidss_dispc_regs.h"
 #include "tidss_scale_coefs.h"
 
+/*
+ * Position value used by the erratum i2097 workaround to move an OVR layer
+ * into the non-visible area. 0x3FFF exceeds the maximum display resolution
+ * supported by any SoC using this driver.
+ */
+#define OVR_LAYER_MAX_POS		0x3FFFu
+
 static const u16 tidss_k2g_common_regs[DISPC_COMMON_REG_TABLE_LEN] = {
 	[DSS_REVISION_OFF] =                    0x00,
 	[DSS_SYSCONFIG_OFF] =                   0x04,
@@ -572,6 +579,9 @@ struct dispc_device {
 	u32 memory_bandwidth_limit;
 
 	struct dispc_errata errata;
+
+	// WA for erratum i2097: OVR Layer Disable May Cause Sync Lost.
+	u32 pending_disable_layers[TIDSS_MAX_PORTS];
 };
 
 static void dispc_write(struct dispc_device *dispc, u16 reg, u32 val)
@@ -1308,6 +1318,12 @@ static void dispc_enable_am65x_oldi(struct dispc_device *dispc, u32 hw_videoport
 void dispc_vp_prepare(struct dispc_device *dispc, u32 hw_videoport,
 		      const struct drm_crtc_state *state)
 {
+	/*
+	 * WA for erratum i2097: clear any stale layer disable tracking
+	 * state left over from the previous VP enable/disable cycle.
+	 */
+	dispc->pending_disable_layers[hw_videoport] = 0;
+
 	const struct tidss_crtc_state *tstate = to_tidss_crtc_state(state);
 	const struct dispc_bus_format *fmt;
 
@@ -1430,6 +1446,28 @@ bool dispc_vp_go_busy(struct dispc_device *dispc, u32 hw_videoport)
 void dispc_vp_go(struct dispc_device *dispc, u32 hw_videoport)
 {
 	WARN_ON(VP_REG_GET(dispc, hw_videoport, DISPC_VP_CONTROL, 5, 5));
+
+	if (dispc->errata.i2097 &&
+	    dispc->pending_disable_layers[hw_videoport]) {
+		u32 layer;
+
+		/*
+		 * WA for erratum i2097:
+		 *
+		 * Write ENABLE=0 here, immediately before the GO bit, so
+		 * that the "disable layer MMR write" and "GO bit set"
+		 * always occur within the same frame window.
+		 */
+		for (layer = 0; layer < dispc->feat->num_planes; layer++) {
+			if (dispc->pending_disable_layers[hw_videoport] &
+			    BIT(layer))
+				OVR_REG_FLD_MOD(dispc, hw_videoport,
+						DISPC_OVR_ATTRIBUTES(layer),
+						0, 0, 0);
+		}
+		dispc->pending_disable_layers[hw_videoport] = 0;
+	}
+
 	VP_REG_FLD_MOD(dispc, hw_videoport, DISPC_VP_CONTROL, 1, 5, 5);
 }
 
@@ -1712,6 +1750,57 @@ void dispc_ovr_enable_layer(struct dispc_device *dispc,
 {
 	if (dispc->feat->subrev == DISPC_K2G)
 		return;
+
+	if (dispc->errata.i2097 && !enable) {
+		/*
+		 * WA for erratum i2097:
+		 *
+		 * Do not write ENABLE=0 directly. Instead move the layer to
+		 * the non-visible area so it contributes no pixels.
+		 *
+		 * Position register layout differs per SoC:
+		 *   J721E : DISPC_OVR_ATTRIBUTES2, X[13:0],  Y[29:16] (14-bit)
+		 *   Others: DISPC_OVR_ATTRIBUTES,  X[17:6],  Y[30:19] (12-bit)
+		 */
+		switch (dispc->feat->subrev) {
+		case DISPC_J721E:
+			OVR_REG_FLD_MOD(dispc, hw_videoport,
+					DISPC_OVR_ATTRIBUTES2(layer),
+					OVR_LAYER_MAX_POS, 13, 0);
+			OVR_REG_FLD_MOD(dispc, hw_videoport,
+					DISPC_OVR_ATTRIBUTES2(layer),
+					OVR_LAYER_MAX_POS, 29, 16);
+			break;
+		case DISPC_AM62L:
+			OVR_REG_FLD_MOD(dispc, 0,
+					DISPC_OVR_ATTRIBUTES(0),
+					OVR_LAYER_MAX_POS, 17, 6);
+			OVR_REG_FLD_MOD(dispc, 0,
+					DISPC_OVR_ATTRIBUTES(0),
+					OVR_LAYER_MAX_POS, 30, 19);
+			break;
+		default:
+			OVR_REG_FLD_MOD(dispc, hw_videoport,
+					DISPC_OVR_ATTRIBUTES(layer),
+					OVR_LAYER_MAX_POS, 17, 6);
+			OVR_REG_FLD_MOD(dispc, hw_videoport,
+					DISPC_OVR_ATTRIBUTES(layer),
+					OVR_LAYER_MAX_POS, 30, 19);
+			break;
+		}
+
+		dispc->pending_disable_layers[hw_videoport] |= BIT(layer);
+		return;
+	}
+
+	if (dispc->errata.i2097 && enable) {
+		/*
+		 * Layer being re-enabled: cancel any pending disable so
+		 * dispc_vp_go() does not write ENABLE=0 after we have
+		 * just written ENABLE=1 here.
+		 */
+		dispc->pending_disable_layers[hw_videoport] &= ~BIT(layer);
+	}
 
 	OVR_REG_FLD_MOD(dispc, hw_videoport, DISPC_OVR_ATTRIBUTES(layer),
 			!!enable, 0, 0);
@@ -3231,6 +3320,12 @@ static void dispc_init_errata(struct dispc_device *dispc)
 	if (soc_device_match(am65x_sr10_soc_devices)) {
 		dispc->errata.i2000 = true;
 		dev_info(dispc->dev, "WA for erratum i2000: YUV formats disabled\n");
+	}
+
+	if (dispc->feat->subrev != DISPC_K2G) {
+		dispc->errata.i2097 = true;
+		dev_info(dispc->dev,
+			 "WA for erratum i2097: OVR layer disable uses non-visible area\n");
 	}
 }
 
