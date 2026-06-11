@@ -662,7 +662,7 @@ int k3_rproc_suspend(struct rproc *rproc)
 	struct device *dev = kproc->dev;
 	int ret = 0;
 
-	if (rproc->state != RPROC_RUNNING)
+	if (rproc->state != RPROC_RUNNING && rproc->state != RPROC_ATTACHED)
 		return ret;
 
 	/*
@@ -695,11 +695,14 @@ int k3_rproc_suspend(struct rproc *rproc)
 	}
 
 	if (kproc->suspend_status == RP_MBOX_SUSPEND_ACK) {
-		/* shutdown the remote core */
+		/*
+		 * Try to shutdown the remote core gracefully. But do not block
+		 * suspend if shutdown fails, as the domain is going to go down
+		 * anyways.
+		 */
 		ret = rproc_shutdown(rproc);
 		if (ret) {
-			dev_err(dev, "rproc_shutdown failed, ret = %d\n", ret);
-			return -EBUSY;
+			dev_warn(dev, "rproc_shutdown failed, but continuing anyways ret = %d\n", ret);
 		}
 		kproc->rproc->state = RPROC_SUSPENDED;
 	} else if (kproc->suspend_status == RP_MBOX_SUSPEND_CANCEL) {
