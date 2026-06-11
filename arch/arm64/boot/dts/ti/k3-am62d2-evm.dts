@@ -861,6 +861,7 @@
 	memory-region = <&wkup_r5fss0_core0_dma_memory_region>,
 			<&wkup_r5fss0_core0_memory_region>;
 	bootph-pre-ram;
+	ti,rproc-always-on;
 };
 
 &mcu_r5fss0 {
