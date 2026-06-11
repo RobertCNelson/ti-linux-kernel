@@ -79,6 +79,20 @@ properties:
       It should be set as 3 (Single-Core mode) which is also the default if
       omitted.
 
+  ti,rproc-attach-only:
+    type: boolean
+    description: |
+      Flag to convey if the remote processor supports only attach operation in
+      remoteproc framework. This implies Linux should not control the lifecycle
+      (suspend, resume, shutdown, poweron) of the remote processor and only
+      setup the IPC stack if requested.
+
+  ti,rproc-always-on:
+    type: boolean
+    description: |
+      Flag to convey if the remote processor is always on (AON) from the POV of
+      Linux. This implies Linux should not control the lifecycle (suspend,
+      resume, shutdown, poweron) of the remote processor at all.
 
 # R5F Processor Child Nodes:
 # ==========================
