@@ -495,6 +495,10 @@ static int k3_r5_rproc_request_mbox(struct rproc *rproc)
 	struct k3_r5_rproc *kproc = rproc->priv;
 	struct mbox_client *client = &kproc->client;
 	struct device *dev = kproc->dev;
+	struct platform_device *mbox_pdev;
+	struct device_node *np = dev_of_node(dev);
+	struct device_node *mbox_np;
+	struct device_link *link;
 
 	client->dev = dev;
 	client->tx_done = NULL;
@@ -506,6 +510,22 @@ static int k3_r5_rproc_request_mbox(struct rproc *rproc)
 	if (IS_ERR(kproc->mbox))
 		return dev_err_probe(dev, PTR_ERR(kproc->mbox),
 				     "mbox_request_channel failed\n");
+
+	mbox_np = of_parse_phandle(np, "mboxes", 0);
+	if (IS_ERR(mbox_np))
+		return dev_err_probe(dev, PTR_ERR(mbox_np), "failed to get mboxes\n");
+
+	mbox_pdev = of_find_device_by_node(mbox_np);
+	of_node_put(mbox_np);
+	if (IS_ERR(mbox_pdev))
+		return dev_err_probe(dev, PTR_ERR(mbox_pdev), "mailbox device not yet ready\n");
+
+	/* Ensure mailbox is suspended after remoteproc */
+	link = device_link_add(dev, &mbox_pdev->dev, DL_FLAG_AUTOREMOVE_SUPPLIER);
+	put_device(&mbox_pdev->dev);
+	if (IS_ERR(link))
+		return dev_err_probe(dev, PTR_ERR(link),
+				     "Unable to create device link with mbox dev\n");
 
 	return 0;
 }
@@ -1927,10 +1947,6 @@ static int k3_r5_cluster_of_init(struct platform_device *pdev)
 	struct k3_r5_cluster *cluster = platform_get_drvdata(pdev);
 	struct device *dev = &pdev->dev;
 	struct device_node *np = dev_of_node(dev);
-	struct device_node *child_np;
-	struct device_node *mbox_np;
-	struct platform_device *mbox_pdev;
-	struct device_link *link;
 	struct platform_device *cpdev;
 	struct device_node *child;
 	struct k3_r5_core *core;
@@ -1944,31 +1960,6 @@ static int k3_r5_cluster_of_init(struct platform_device *pdev)
 			of_node_put(child);
 			goto fail;
 		}
-
-		child_np = dev_of_node(&cpdev->dev);
-
-		mbox_np = of_parse_phandle(child_np, "mboxes", 0);
-		if (!mbox_np) {
-			dev_err(dev, "failed to get mboxes\n");
-			ret = -ENODEV;
-			goto fail;
-		}
-
-		mbox_pdev = of_find_device_by_node(mbox_np);
-		of_node_put(mbox_np);
-		if (!mbox_pdev) {
-			dev_err(dev, "mailbox device not yet ready\n");
-			ret = -EPROBE_DEFER;
-			goto fail;
-		}
-
-		/* Ensure mailbox is suspended after remoteproc */
-		link = device_link_add(dev, &mbox_pdev->dev,
-				       DL_FLAG_AUTOREMOVE_SUPPLIER);
-		put_device(&mbox_pdev->dev);
-		if (IS_ERR(link))
-			return dev_err_probe(dev, PTR_ERR(link),
-					     "Unable to create device link with mbox dev\n");
 
 		ret = k3_r5_core_of_init(cpdev);
 		if (ret) {
