@@ -1930,6 +1930,7 @@ static int k3_r5_cluster_of_init(struct platform_device *pdev)
 	struct device_node *child_np;
 	struct device_node *mbox_np;
 	struct platform_device *mbox_pdev;
+	struct device_link *link;
 	struct platform_device *cpdev;
 	struct device_node *child;
 	struct k3_r5_core *core;
@@ -1962,8 +1963,12 @@ static int k3_r5_cluster_of_init(struct platform_device *pdev)
 		}
 
 		/* Ensure mailbox is suspended after remoteproc */
-		device_link_add(dev, &mbox_pdev->dev,
-				DL_FLAG_AUTOREMOVE_SUPPLIER);
+		link = device_link_add(dev, &mbox_pdev->dev,
+				       DL_FLAG_AUTOREMOVE_SUPPLIER);
+		put_device(&mbox_pdev->dev);
+		if (IS_ERR(link))
+			return dev_err_probe(dev, PTR_ERR(link),
+					     "Unable to create device link with mbox dev\n");
 
 		ret = k3_r5_core_of_init(cpdev);
 		if (ret) {

@@ -234,6 +234,7 @@ int k3_rproc_request_mbox(struct rproc *rproc)
 	struct platform_device *mbox_pdev;
 	struct device_node *np = dev_of_node(dev);
 	struct device_node *mbox_np;
+	struct device_link *link;
 
 	client->dev = dev;
 	client->tx_done = NULL;
@@ -260,7 +261,11 @@ int k3_rproc_request_mbox(struct rproc *rproc)
 	}
 
 	/* Ensure mailbox is suspended after remoteproc */
-	device_link_add(dev, &mbox_pdev->dev, DL_FLAG_AUTOREMOVE_SUPPLIER);
+	link = device_link_add(dev, &mbox_pdev->dev, DL_FLAG_AUTOREMOVE_SUPPLIER);
+	put_device(&mbox_pdev->dev);
+	if (IS_ERR(link))
+		return dev_err_probe(dev, PTR_ERR(link),
+				     "Unable to create device link with mbox dev\n");
 
 	return 0;
 }
