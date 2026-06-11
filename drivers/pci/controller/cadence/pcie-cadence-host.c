@@ -607,6 +607,9 @@ int cdns_pcie_host_link_setup(struct cdns_pcie_rc *rc)
 		return ret;
 	}
 
+	if (rc->skip_link_polling)
+		return 0;
+
 	ret = cdns_pcie_host_start_link(rc);
 	if (ret)
 		dev_dbg(dev, "PCIe link never came up\n");
