@@ -234,6 +234,7 @@ int k3_rproc_request_mbox(struct rproc *rproc)
 	struct platform_device *mbox_pdev;
 	struct device_node *np = dev_of_node(dev);
 	struct device_node *mbox_np;
+	struct device_link *link;
 
 	client->dev = dev;
 	client->tx_done = NULL;
@@ -260,7 +261,11 @@ int k3_rproc_request_mbox(struct rproc *rproc)
 	}
 
 	/* Ensure mailbox is suspended after remoteproc */
-	device_link_add(dev, &mbox_pdev->dev, DL_FLAG_AUTOREMOVE_SUPPLIER);
+	link = device_link_add(dev, &mbox_pdev->dev, DL_FLAG_AUTOREMOVE_SUPPLIER);
+	put_device(&mbox_pdev->dev);
+	if (IS_ERR(link))
+		return dev_err_probe(dev, PTR_ERR(link),
+				     "Unable to create device link with mbox dev\n");
 
 	return 0;
 }
@@ -657,7 +662,7 @@ int k3_rproc_suspend(struct rproc *rproc)
 	struct device *dev = kproc->dev;
 	int ret = 0;
 
-	if (rproc->state != RPROC_RUNNING)
+	if (rproc->state != RPROC_RUNNING && rproc->state != RPROC_ATTACHED)
 		return ret;
 
 	/*
@@ -690,11 +695,14 @@ int k3_rproc_suspend(struct rproc *rproc)
 	}
 
 	if (kproc->suspend_status == RP_MBOX_SUSPEND_ACK) {
-		/* shutdown the remote core */
+		/*
+		 * Try to shutdown the remote core gracefully. But do not block
+		 * suspend if shutdown fails, as the domain is going to go down
+		 * anyways.
+		 */
 		ret = rproc_shutdown(rproc);
 		if (ret) {
-			dev_err(dev, "rproc_shutdown failed, ret = %d\n", ret);
-			return -EBUSY;
+			dev_warn(dev, "rproc_shutdown failed, but continuing anyways ret = %d\n", ret);
 		}
 		kproc->rproc->state = RPROC_SUSPENDED;
 	} else if (kproc->suspend_status == RP_MBOX_SUSPEND_CANCEL) {

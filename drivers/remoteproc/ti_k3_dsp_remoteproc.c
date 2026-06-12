@@ -57,10 +57,40 @@ static int k3_dsp_rproc_start(struct rproc *rproc)
 	return 0;
 }
 
+/*
+ * Attach to a running DSP remote processor (IPC-only mode)
+ *
+ * The DSP attach callback sets up the remoteproc ops for subsequent operations.
+ * We do not want to set these ops during probe as .prepare() is invoked in
+ * rproc attach flow and can lead to undefined behaviour if resets are released
+ * for an already running rproc. This supports shutdown/power-on from userspace
+ * and suspend/resume for early booted remote processors. This callback is
+ * invoked only in IPC-only mode.
+ */
+static int k3_dsp_rproc_attach(struct rproc *rproc)
+{
+	struct k3_rproc *kproc = rproc->priv;
+	int ret;
+
+	if (kproc->data->uses_lreset) {
+		rproc->ops->prepare = k3_rproc_prepare;
+		rproc->ops->unprepare = k3_rproc_unprepare;
+	}
+
+	rproc->ops->start = k3_dsp_rproc_start;
+	rproc->ops->stop = k3_rproc_stop;
+
+	ret = k3_rproc_attach(rproc);
+	if (ret)
+		return ret;
+
+	return 0;
+}
+
 static const struct rproc_ops k3_dsp_rproc_ops = {
 	.start			=	k3_dsp_rproc_start,
 	.stop			=	k3_rproc_stop,
-	.attach			=	k3_rproc_attach,
+	.attach			=	k3_dsp_rproc_attach,
 	.detach			=	k3_rproc_detach,
 	.kick			=	k3_rproc_kick,
 	.da_to_va		=	k3_rproc_da_to_va,
@@ -157,9 +187,11 @@ static int k3_dsp_rproc_probe(struct platform_device *pdev)
 		kproc->rproc->ops->stop = NULL;
 	} else {
 		dev_info(dev, "configured DSP for remoteproc mode\n");
-		kproc->pm_notifier.notifier_call = k3_rproc_pm_notifier_call;
-		register_pm_notifier(&kproc->pm_notifier);
 	}
+
+	/* register pm notifiers for both modes */
+	kproc->pm_notifier.notifier_call = k3_rproc_pm_notifier_call;
+	register_pm_notifier(&kproc->pm_notifier);
 
 	ret = dma_coerce_mask_and_coherent(&rproc->dev, DMA_BIT_MASK(48));
 	if (ret)
