@@ -437,9 +437,16 @@ static void sdhci_am654_write_b(struct sdhci_host *host, u8 val, int reg)
 	if (reg == SDHCI_POWER_CONTROL && (val & SDHCI_POWER_ON)) {
 		/*
 		 * Power on will not happen until the card detect debounce
-		 * timer expires. Wait at least 1.5 seconds for the power on
-		 * bit to be set
+		 * timer expires. Wait for the power on bit to be set.
+		 * If card is not present, skip polling entirely to avoid
+		 * boot delay. Fall back to polling in case of errors.
 		 */
+		if (host->mmc->ops->get_cd) {
+			ret = host->mmc->ops->get_cd(host->mmc);
+			if (ret == 0)
+				return;
+		}
+
 		ret = read_poll_timeout(sdhci_am654_write_power_on, pwr,
 					pwr & SDHCI_POWER_ON, 0,
 					MAX_POWER_ON_TIMEOUT, false, host, val,
