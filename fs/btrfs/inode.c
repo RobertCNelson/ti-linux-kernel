@@ -4826,6 +4826,8 @@ static int btrfs_rmdir(struct inode *vfs_dir, struct dentry *dentry)
 	if (ret)
 		goto out;
 
+	btrfs_record_unlink_dir(trans, dir, inode, false);
+
 	/* now the directory is empty */
 	ret = btrfs_unlink_inode(trans, dir, inode, &fname.disk_name);
 	if (!ret)
@@ -6477,6 +6479,25 @@ int btrfs_create_new_inode(struct btrfs_trans_handle *trans,
 	unsigned long ptr;
 	int ret;
 	bool xa_reserved = false;
+
+	if (!args->orphan && !args->subvol) {
+		/*
+		 * Before anything else, check if we can add the name to the
+		 * parent directory. We want to avoid a dir item overflow in
+		 * case we have an existing dir item due to existing name
+		 * hash collisions. We do this check here before we call
+		 * btrfs_add_link() down below so that we can avoid a
+		 * transaction abort (which could be exploited by malicious
+		 * users).
+		 *
+		 * For subvolumes we already do this in btrfs_mksubvol().
+		 */
+		ret = btrfs_check_dir_item_collision(BTRFS_I(dir)->root,
+						     btrfs_ino(BTRFS_I(dir)),
+						     name);
+		if (ret < 0)
+			return ret;
+	}
 
 	path = btrfs_alloc_path();
 	if (!path)
