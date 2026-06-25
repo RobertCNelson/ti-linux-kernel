@@ -890,6 +890,7 @@ static const struct snd_soc_dapm_route tad5x1x_dapm_routes[] = {
 	/* Left Output */
 	{"ASI_RX_CH1_EN", "Switch", "ASI IN1"},
 
+	{"OUT1x Source", "DAC Input", "ASI_RX_CH1_EN"},
 	{"OUT1x Source", "DAC + Analog Bypass Mix", "ASI_RX_CH1_EN"},
 	{"OUT1x Source", "DAC -> OUTxP, INxP -> OUTxM", "ASI_RX_CH1_EN"},
 	{"OUT1x Source", "INxM -> OUTxP, DAC -> OUTxM", "ASI_RX_CH1_EN"},
@@ -932,9 +933,10 @@ static const struct snd_soc_dapm_route tad5x12_dapm_routes[] = {
 	/* Right Output */
 	{"ASI_RX_CH2_EN", "Switch", "ASI IN2"},
 
-	{"OUT2x Source", "DAC + Analog Bypass Mix", "ASI_RX_CH1_EN"},
-	{"OUT2x Source", "DAC -> OUTxP, INxP -> OUTxM", "ASI_RX_CH1_EN"},
-	{"OUT2x Source", "INxM -> OUTxP, DAC -> OUTxM", "ASI_RX_CH1_EN"},
+	{"OUT2x Source", "DAC Input", "ASI_RX_CH2_EN"},
+	{"OUT2x Source", "DAC + Analog Bypass Mix", "ASI_RX_CH2_EN"},
+	{"OUT2x Source", "DAC -> OUTxP, INxP -> OUTxM", "ASI_RX_CH2_EN"},
+	{"OUT2x Source", "INxM -> OUTxP, DAC -> OUTxM", "ASI_RX_CH2_EN"},
 
 	{"OUT2x Config", "Differential", "OUT2x Source"},
 	// {"OUT2x Config", "Stereo Single-ended", "OUT2x Source"},
