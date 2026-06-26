@@ -178,6 +178,15 @@ config COMMON_CLK_BM1880
 	help
 	  This driver supports the clocks on Bitmain BM1880 SoC.
 
+config COMMON_CLK_CDCE6214
+	tristate "Clock driver for TI CDCE6214 clock synthesizer"
+	depends on I2C
+	depends on PINCTRL
+	select GENERIC_PINCONF
+	select REGMAP_I2C
+	help
+	  This driver supports TI CDCE6214 programmable 1-PLL clock synthesizer.
+
 config COMMON_CLK_CDCE706
 	tristate "Clock driver for TI CDCE706 clock synthesizer"
 	depends on I2C
