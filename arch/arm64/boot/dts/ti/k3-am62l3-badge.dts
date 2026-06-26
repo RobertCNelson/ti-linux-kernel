@@ -695,7 +695,6 @@
 
 &usb0 {
 	usb-role-switch;
-	bootph-all;
 };
 
 &usbss1 {
