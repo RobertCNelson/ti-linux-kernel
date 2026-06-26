@@ -15,6 +15,8 @@
 #include <linux/module.h>
 #include <linux/regmap.h>
 #include <linux/bitfield.h>
+#include <linux/pinctrl/consumer.h>
+#include <linux/rational.h>
 #include <linux/pinctrl/pinmux.h>
 #include <linux/pinctrl/pinctrl.h>
 #include <linux/pinctrl/pinconf.h>
@@ -425,7 +427,10 @@ static int cdce6214_clk_out0_set_parent(struct clk_hw *hw, u8 index)
 	struct cdce6214_clock *clock = hw_to_cdce6214_clk(hw);
 	struct cdce6214 *priv = clock->priv;
 
-	regmap_update_bits(priv->regmap, R25, R25_REF_CH_MUX, FIELD_PREP(R25_REF_CH_MUX, index));
+	/* index 0 = PRIREF (pin-controlled), index 1 = SECREF (forced via SW) */
+	unsigned int val = index ? 2 : 0;
+
+	regmap_update_bits(priv->regmap, R2, R2_REFSEL_SW, FIELD_PREP(R2_REFSEL_SW, val));
 
 	return 0;
 }
@@ -518,6 +523,9 @@ static unsigned long cdce6214_clk_out_recalc_rate(struct clk_hw *hw,
 		regmap_read(priv->regmap, R72, &val);
 		div = FIELD_GET(R72_CH4_DIV, val);
 		break;
+	default:
+		WARN_ON(1);
+		return 0;
 	};
 
 	if (!div)
@@ -574,6 +582,9 @@ static int cdce6214_clk_out_set_rate(struct clk_hw *hw, unsigned long rate,
 		regmap_update_bits(priv->regmap, R72, R72_CH4_DIV,
 				   FIELD_PREP(R72_CH4_DIV, div));
 		break;
+	default:
+		WARN_ON(1);
+		break;
 	};
 
 	return 0;
@@ -602,7 +613,14 @@ static u8 cdce6214_clk_out_get_parent(struct clk_hw *hw)
 		regmap_read(priv->regmap, R72, &val);
 		idx = FIELD_GET(R72_CH4_MUX, val);
 		break;
+	default:
+		WARN_ON(1);
+		return 0;
 	};
+
+	/* Hardware mux index 2 is reserved; clk parent array has NULL there */
+	if (WARN_ON_ONCE(idx == 2))
+		return 0;
 
 	return idx;
 }
@@ -625,6 +643,9 @@ static int cdce6214_clk_out_set_parent(struct clk_hw *hw, u8 index)
 	case CDCE6214_CLK_OUT4:
 		regmap_update_bits(priv->regmap, R72, R72_CH4_MUX, FIELD_PREP(R72_CH4_MUX, index));
 		break;
+	default:
+		WARN_ON(1);
+		break;
 	};
 
 	return 0;
@@ -644,17 +665,12 @@ static const struct clk_ops cdce6214_clk_out_ops = {
 static int pll_calc_values(unsigned long parent_rate, unsigned long out,
 			   unsigned long *ndiv, unsigned long *num, unsigned long *den)
 {
-	u64 a;
-
 	if (out < CDCE6214_VCO_MIN || out > CDCE6214_VCO_MAX)
 		return -EINVAL;
 
-	*den = 10000000;
 	*ndiv = out / parent_rate;
-	a = out % parent_rate;
-	a *= *den;
-	do_div(a, parent_rate);
-	*num = a;
+	rational_best_approximation(out % parent_rate, parent_rate,
+				    GENMASK(23, 0), GENMASK(23, 0), num, den);
 
 	return 0;
 }
@@ -691,11 +707,20 @@ static unsigned long cdce6214_clk_pll_recalc_rate(struct clk_hw *hw,
 static int cdce6214_clk_pll_determine_rate(struct clk_hw *hw,
 					   struct clk_rate_request *req)
 {
-	req->rate = clamp(req->rate, CDCE6214_VCO_MIN, CDCE6214_VCO_MAX);
+	unsigned long parent_rate = req->best_parent_rate;
+	unsigned long ndiv, num, den;
+	unsigned long rate;
+	int ret;
 
-	if (req->rate < req->best_parent_rate * CDCE6214_PLL_NDIV_MIN)
+	rate = clamp(req->rate, CDCE6214_VCO_MIN, CDCE6214_VCO_MAX);
+	if (rate < parent_rate * CDCE6214_PLL_NDIV_MIN)
 		return -EINVAL;
 
+	ret = pll_calc_values(parent_rate, rate, &ndiv, &num, &den);
+	if (ret)
+		return ret;
+
+	req->rate = parent_rate * ndiv + DIV_ROUND_CLOSEST(parent_rate * num, den);
 	req->min_rate = CDCE6214_VCO_MIN;
 	req->max_rate = CDCE6214_VCO_MAX;
 
@@ -717,7 +742,7 @@ static int cdce6214_wait_pll_lock(struct cdce6214 *priv)
 	int ret;
 
 	ret = regmap_read_poll_timeout(priv->regmap, R7, val,
-				       val & R7_LOCK_DET, 0, 1000);
+				       val & R7_LOCK_DET, 1000, 100000);
 	if (ret)
 		dev_err(priv->dev, "Timeout waiting for PLL lock\n");
 
@@ -776,9 +801,6 @@ static int cdce6214_clk_pll_set_rate(struct clk_hw *hw, unsigned long rate,
 	ret = pll_calc_values(parent_rate, rate, &ndiv, &num, &den);
 	if (ret < 0)
 		return ret;
-
-	if (den == CDCE6214_DENOM_DEFAULT)
-		den = 0;
 
 	regmap_update_bits(priv->regmap, R34, R34_PLL_DEN_23_16,
 			   FIELD_PREP(R34_PLL_DEN_23_16, den >> 16));
@@ -879,6 +901,9 @@ static unsigned long cdce6214_clk_psx_recalc_rate(struct clk_hw *hw,
 	case CDCE6214_CLK_PSB:
 		div = psx[FIELD_GET(R47_PLL_PSB, val)];
 		break;
+	default:
+		WARN_ON(1);
+		return 0;
 	};
 
 	return DIV_ROUND_UP_ULL((u64)parent_rate, div);
@@ -944,7 +969,7 @@ static int cdce6214_clk_register(struct cdce6214 *priv)
 	pdata_out0[1].fw_name = "secref";
 
 	init[CDCE6214_CLK_OUT0].ops = &cdce6214_clk_out0_ops;
-	init[CDCE6214_CLK_OUT0].num_parents = ARRAY_SIZE(pdata_out);
+	init[CDCE6214_CLK_OUT0].num_parents = ARRAY_SIZE(pdata_out0);
 	init[CDCE6214_CLK_OUT0].parent_data = pdata_out0;
 	init[CDCE6214_CLK_OUT0].flags = CLK_SET_RATE_NO_REPARENT;
 
@@ -956,7 +981,7 @@ static int cdce6214_clk_register(struct cdce6214 *priv)
 		init[i].ops = &cdce6214_clk_out_ops;
 		init[i].num_parents = ARRAY_SIZE(pdata_out);
 		init[i].parent_data = pdata_out;
-		init[i].flags = CLK_SET_RATE_NO_REPARENT;
+		init[i].flags = CLK_SET_RATE_NO_REPARENT | CLK_IGNORE_UNUSED;
 	}
 
 	init[CDCE6214_CLK_PLL].ops = &cdce6214_clk_pll_ops;
@@ -1292,9 +1317,11 @@ static int cdce6214_pinconf_set_iostd(struct cdce6214 *priv, unsigned int pin,
 			regmap_clear_bits(reg, R68, R68_CH3_LPHCSL_EN);
 			break;
 		case CDCE6214_IOSTD_LP_HCSL:
-			regmap_set_bits(reg, R70, R70_CH3_LVDS_EN);
-			regmap_clear_bits(reg, R68, R65_CH2_LVDS_EN);
+			regmap_clear_bits(reg, R70, R70_CH3_LVDS_EN);
+			regmap_set_bits(reg, R68, R68_CH3_LPHCSL_EN);
 			break;
+		default:
+			goto err_illegal_fmt;
 		}
 		break;
 	case OUT4:
@@ -1309,7 +1336,7 @@ static int cdce6214_pinconf_set_iostd(struct cdce6214 *priv, unsigned int pin,
 			break;
 		case CDCE6214_IOSTD_LP_HCSL:
 			regmap_clear_bits(reg, R75, R75_CH4_LVDS_EN);
-			regmap_set_bits(reg, R72, R73_CH4_LPHCSL_EN);
+			regmap_set_bits(reg, R73, R73_CH4_LPHCSL_EN);
 			break;
 		default:
 			goto err_illegal_fmt;
@@ -1589,6 +1616,13 @@ static int cdce6214_probe(struct i2c_client *client)
 	ret = pinctrl_enable(pctl);
 	if (ret)
 		return dev_err_probe(dev, ret, "pinctrl enable failed");
+
+	/* pinctrl_claim_hogs fails silently for self-referencing providers;
+	 * -ENODEV means no pinctrl-0 is present.
+	 */
+	ret = PTR_ERR_OR_ZERO(devm_pinctrl_get_select_default(dev));
+	if (ret && ret != -ENODEV)
+		return dev_err_probe(dev, ret, "failed to apply default pinctrl state\n");
 
 	ret = cdce6214_clk_register(priv);
 	if (ret)
