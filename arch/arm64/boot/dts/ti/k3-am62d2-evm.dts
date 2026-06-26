@@ -7,6 +7,7 @@
 
 /dts-v1/;
 
+#include <dt-bindings/clock/ti,cdce6214.h>
 #include <dt-bindings/leds/common.h>
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/net/ti-dp83867.h>
@@ -87,6 +88,13 @@
 			opp-supported-hw = <0x01 0x0004>;
 			clock-latency-ns = <6000000>;
 		};
+	};
+
+	cdce6214_ref_clk: cdce6214-ref-clk {
+		/* 24.576 MHz crystal reference for CDCE6214 (SECREF input, Y1 on EVM) */
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <24576000>;
 	};
 
 	vout_pd: regulator-0 {
@@ -202,7 +210,7 @@
 
 			master0: cpu {
 				sound-dai = <&mcasp2>;
-				system-clock-direction-out;
+				clocks = <&cdce6214 CDCE6214_CLK_OUT1>;
 			};
 
 			codec@0 {
@@ -217,7 +225,7 @@
 
 			master1: cpu {
 				sound-dai = <&mcasp2>;
-				system-clock-direction-out;
+				clocks = <&cdce6214 CDCE6214_CLK_OUT1>;
 			};
 
 			codec@1 {
@@ -233,7 +241,7 @@
 
 			master2: cpu {
 				sound-dai = <&mcasp2>;
-				system-clock-direction-out;
+				clocks = <&cdce6214 CDCE6214_CLK_OUT1>;
 			};
 
 			codec@2 {
@@ -249,7 +257,7 @@
 
 			master3: cpu {
 				sound-dai = <&mcasp2>;
-				system-clock-direction-out;
+				clocks = <&cdce6214 CDCE6214_CLK_OUT1>;
 			};
 
 			codec@3 {
@@ -265,7 +273,7 @@
 
 			master4: cpu {
 				sound-dai = <&mcasp2>;
-				system-clock-direction-out;
+				clocks = <&cdce6214 CDCE6214_CLK_OUT1>;
 			};
 
 			codec@4 {
@@ -480,6 +488,8 @@
 
 	main_mcasp2_pins_default: main-mcasp2-default-pins {
 		pinctrl-single,pins = <
+			/* (K17) GPMC0_WPn.AUDIO_EXT_REFCLK1 - CDCE6214 OUT1 via CPLD1 */
+			AM62DX_IOPAD(0x00a0, PIN_INPUT, 1)
 			AM62DX_IOPAD(0x0078, PIN_INPUT, 3) /* (T21) GPMC0_AD15.MCASP2_ACLKR */
 			AM62DX_IOPAD(0x0070, PIN_INPUT, 3) /* (R21) GPMC0_AD13.MCASP2_ACLKX */
 			AM62DX_IOPAD(0x0074, PIN_INPUT, 3) /* (T20) GPMC0_AD14.MCASP2_AFSR */
@@ -651,6 +661,27 @@
 		#sound-dai-cells = <0>;
 		sound-name-prefix = "pcm6240-2dev-reg";
 	};
+
+	cdce6214: clock-generator@68 {
+		compatible = "ti,cdce6214";
+		reg = <0x68>;
+		#clock-cells = <1>;
+		clocks = <&cdce6214_ref_clk>;
+		clock-names = "secref";
+		pinctrl-names = "default";
+		pinctrl-0 = <&cdce6214_pins>;
+		assigned-clocks = <&cdce6214 CDCE6214_CLK_OUT1>;
+		assigned-clock-rates = <24576000>;
+
+		cdce6214_pins: cdce6214-pins {
+			conf-xtal {
+				pins = "secref";
+				ti,io-standard = <CDCE6214_IOSTD_XTAL>;
+				ti,xo-cload-femtofarad = <9000>;
+				ti,xo-bias-microampere = <148>;
+			};
+		};
+	};
 };
 
 &main_i2c1 {
@@ -667,6 +698,24 @@
 	status = "okay";
 };
 
+&mcasp0 {
+	/* AHCLKX (190:15) and AHCLKR (190:9) sourced from
+	 * BOARD_0_AUDIO_EXT_REFCLK1_OUT via CDCE6214 OUT1/CPLD1/K17
+	 */
+	assigned-clocks = <&k3_clks 190 0>, <&k3_clks 190 15>, <&k3_clks 190 9>;
+	assigned-clock-parents = <&k3_clks 190 2>, <&k3_clks 190 19>, <&k3_clks 190 13>;
+	assigned-clock-rates = <0>, <24576000>, <24576000>;
+};
+
+&mcasp1 {
+	/* AHCLKX (191:15) and AHCLKR (191:9) sourced from
+	 * BOARD_0_AUDIO_EXT_REFCLK1_OUT via CDCE6214 OUT1/CPLD1/K17
+	 */
+	assigned-clocks = <&k3_clks 191 0>, <&k3_clks 191 15>, <&k3_clks 191 9>;
+	assigned-clock-parents = <&k3_clks 191 2>, <&k3_clks 191 19>, <&k3_clks 191 13>;
+	assigned-clock-rates = <0>, <24576000>, <24576000>;
+};
+
 &mcasp2 {
 	status = "okay";
 	#sound-dai-cells = <0>;
@@ -674,7 +723,13 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&main_mcasp2_pins_default>;
 
-	auxclk-fs-ratio = <2177>;
+	/* AHCLKX (192:15) and AHCLKR (192:9) sourced from
+	 * BOARD_0_AUDIO_EXT_REFCLK1_OUT via CDCE6214 OUT1/CPLD1/K17
+	 */
+	assigned-clocks = <&k3_clks 192 0>, <&k3_clks 192 15>, <&k3_clks 192 9>;
+	assigned-clock-parents = <&k3_clks 192 2>, <&k3_clks 192 19>, <&k3_clks 192 13>;
+	assigned-clock-rates = <0>, <24576000>, <24576000>;
+
 	op-mode = <0>;          /* MCASP_IIS_MODE */
 	tdm-slots = <2>;
 	tdm-slots-rx = <8>;
