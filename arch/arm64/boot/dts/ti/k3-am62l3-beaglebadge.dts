@@ -213,6 +213,17 @@
 		pinctrl-0 = <&sensor_3v3_ena_pins_default>;
 		bootph-all;
 	};
+
+	wlan_en: regulator-5 {
+		compatible = "regulator-fixed";
+		regulator-name = "wlan_en";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		enable-active-high;
+		gpios = <&gpio0 51 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&wlan_en_pins_default>;
+	};
 };
 
 &pmx0 {
@@ -305,6 +316,30 @@
 		bootph-all;
 	};
 
+	mmc2_pins_default: mmc2-default-pins {
+		pinctrl-single,pins = <
+			AM62LX_IOPAD(0x010c, PIN_INPUT, 0) /* (U23) MMC2_CMD */
+			AM62LX_IOPAD(0x0104, PIN_OUTPUT, 0) /* (R23) MMC2_CLK */
+			AM62LX_IOPAD(0x0108, PIN_INPUT, 0) /* () MMC2_CLKLB */
+			AM62LX_IOPAD(0x0100, PIN_INPUT, 0) /* (U22) MMC2_DAT0 */
+			AM62LX_IOPAD(0x00fc, PIN_INPUT, 0) /* (T22) MMC2_DAT1 */
+			AM62LX_IOPAD(0x00f8, PIN_INPUT, 0) /* (T23) MMC2_DAT2 */
+			AM62LX_IOPAD(0x00f4, PIN_INPUT, 0) /* (R22) MMC2_DAT3 */
+		>;
+	};
+
+	wlan_en_pins_default: wlan-en-default-pins {
+		pinctrl-single,pins = <
+			AM62LX_IOPAD(0x0110, PIN_OUTPUT, 7) /* (T20) MMC2_SDCD.GPIO0_51 */
+		>;
+	};
+
+	wlirq_pins_default: wlirq-default-pins {
+		pinctrl-single,pins = <
+			AM62LX_IOPAD(0x0114, PIN_INPUT, 7) /* (T21) MMC2_SDWP.GPIO0_52 */
+		>;
+	};
+
 	usb1_pins_default: usb1-default-pins {
 		pinctrl-single,pins = <
 			AM62LX_IOPAD(0x0248, PIN_INPUT | PIN_DS_PULLUD_ENABLE |
@@ -349,6 +384,25 @@
 	rgb_led_epwm1_pins_default: rgb-led-epwm1-default-pins {
 		pinctrl-single,pins = <
 			AM62LX_IOPAD(0x018c, PIN_OUTPUT, 5) /* (B9) MCASP0_AXR0.EHRPWM1_B */
+		>;
+	};
+
+	ospi0_pins_default: ospi0-default-pins {
+		bootph-all;
+		pinctrl-single,pins = <
+			AM62LX_IOPAD(0x003c, PIN_OUTPUT, 0) /* (D22) OSPI0_CLK */
+			AM62LX_IOPAD(0x0068, PIN_OUTPUT, 0) /* (C20) OSPI0_CSn0 */
+			AM62LX_IOPAD(0x0074, PIN_OUTPUT, 0) /* (C23) OSPI0_CSn3 */
+			AM62LX_IOPAD(0x0048, PIN_INPUT, 0) /* (C22) OSPI0_D0 */
+			AM62LX_IOPAD(0x004c, PIN_INPUT, 0) /* (D21) OSPI0_D1 */
+			AM62LX_IOPAD(0x0050, PIN_INPUT, 0) /* (E23) OSPI0_D2 */
+			AM62LX_IOPAD(0x0054, PIN_INPUT, 0) /* (D23) OSPI0_D3 */
+			AM62LX_IOPAD(0x0058, PIN_INPUT, 0) /* (F21) OSPI0_D4 */
+			AM62LX_IOPAD(0x005c, PIN_INPUT, 0) /* (F19) OSPI0_D5 */
+			AM62LX_IOPAD(0x0060, PIN_INPUT, 0) /* (G20) OSPI0_D6 */
+			AM62LX_IOPAD(0x0064, PIN_INPUT, 0) /* (F20) OSPI0_D7 */
+			AM62LX_IOPAD(0x0044, PIN_INPUT, 0) /* (E22) OSPI0_DQS */
+			AM62LX_IOPAD(0x0040, PIN_INPUT, 0) /* (E18) OSPI0_LBCLKO */
 		>;
 	};
 
@@ -419,6 +473,12 @@
 	pinctrl-0 = <&uart1_pins_default>;
 	bootph-all;
 	status = "okay";
+
+	bluetooth {
+		compatible = "ti,cc33xx-bt";
+		max-speed = <115200>;
+		cc33xx-supply = <&wlan_en>;
+	};
 };
 
 &i2c0 {
@@ -577,6 +637,41 @@
 	status = "okay";
 };
 
+&sdhci2 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	vmmc-supply = <&wlan_en>;
+	bus-width = <4>;
+	non-removable;
+	cap-power-off-card;
+	keep-power-in-suspend;
+	pinctrl-names = "default";
+	pinctrl-0 = <&mmc2_pins_default>;
+	ti,driver-strength-ohm = <50>;
+	status = "okay";
+
+	wlcore: wlcore@2 {
+		compatible = "ti,cc3300";
+		reg = <2>;
+		interrupt-parent = <&gpio0>;
+		interrupts = <52 IRQ_TYPE_EDGE_RISING>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&wlirq_pins_default>;
+	};
+};
+
+&tscadc0 {
+	status = "okay";
+
+	adc {
+	ti,adc-channels = <0 /* V20 (Battery) */
+			   1 /* V22 (MikroBus) */
+			   2 /* V23 (Light Sensor) */
+			   3 /* V21 (J28 Header) */
+			   >;
+	};
+};
+
 &epwm0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pwm_beeper_pins_default>;
@@ -632,6 +727,72 @@
 	status = "okay";
 };
 
+&ospi0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&ospi0_pins_default>;
+	bootph-all;
+	status = "okay";
+
+	ospi0_nor: flash@0 {
+		compatible = "jedec,spi-nor";
+		reg = <0x0>;
+		spi-tx-bus-width = <8>;
+		spi-rx-bus-width = <8>;
+		spi-max-frequency = <25000000>;
+		cdns,tshsl-ns = <60>;
+		cdns,tsd2d-ns = <60>;
+		cdns,tchsh-ns = <60>;
+		cdns,tslch-ns = <60>;
+		cdns,read-delay = <4>;
+		cdns,phy-mode;
+		bootph-all;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+			bootph-all;
+
+			partition@0 {
+				label = "ospi.tiboot3";
+				reg = <0x0 0x80000>;
+			};
+
+			partition@80000 {
+				label = "ospi.tispl";
+				reg = <0x80000 0x200000>;
+			};
+
+			partition@280000 {
+				label = "ospi.u-boot";
+				reg = <0x280000 0x400000>;
+			};
+
+			partition@680000 {
+				label = "ospi.env";
+				reg = <0x680000 0x40000>;
+			};
+
+			partition@6c0000 {
+				label = "ospi.env.backup";
+				reg = <0x6c0000 0x40000>;
+			};
+
+			partition@800000 {
+				label = "ospi.rootfs";
+				/* Limited to 20 MB */
+				reg = <0x700000 0x18c0000>;
+			};
+
+			partition@3fc0000 {
+				bootph-all;
+				label = "ospi.phypattern";
+				reg = <0x1fc0000 0x40000>;
+			};
+		};
+	};
+};
+
 &spi1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&spi1_pins_default>;
@@ -654,4 +815,10 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&spi3_pins_default>;
 	status = "okay";
+
+	sx1262_lora: lora@0 {
+		compatible = "rohm,dh2228fv";
+		reg = <0>;
+		spi-max-frequency = <10000000>;
+	};
 };
