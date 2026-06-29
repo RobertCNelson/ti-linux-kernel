@@ -366,7 +366,7 @@ static int k3rtc_analog_suspend(struct device *dev, struct ti_k3_rtc *priv)
 static int k3rtc_analog_resume(struct device *dev, struct ti_k3_rtc *priv)
 {
 	int ret;
-	u32 intr_raw_stat, intr_src, gpio_wkup_en;
+	u32 intr_src;
 
 	/* Explicitly clear SW_OFF bit - forced write required */
 	regmap_write_bits(priv->regmap, REG_K3RTC_GENERAL_CTL,
@@ -401,10 +401,6 @@ static int k3rtc_analog_resume(struct device *dev, struct ti_k3_rtc *priv)
 		dev_err(dev, "fence failed\n");
 		return ret;
 	}
-
-	/* Read RTC's interrupt register to check the wake up source */
-	intr_raw_stat = k3rtc_field_read(priv, K3RTC_IRQ_STATUS_RAW_ALL);
-	gpio_wkup_en = k3rtc_field_read(priv, K3RTC_GEN_WKUP_EN);
 
 	ret = k3rtc_unlock_rtc(dev, priv);
 	if (ret)
@@ -457,20 +453,6 @@ static int k3rtc_analog_resume(struct device *dev, struct ti_k3_rtc *priv)
 	ret = k3rtc_lock_rtc(dev, priv);
 	if (ret)
 		return ret;
-
-	/*
-	 * Interrupt raw status will have status of all interrupts including
-	 * disabled ones. AND with the interrupt enable register value to filter.
-	 * Note: IRQ enable register cannot be used as it loses context during LPM.
-	 */
-	intr_src = (intr_raw_stat & (gpio_wkup_en << 2));
-	/* Demultiplex interrupts to their respective handlers */
-	/* External wakeup pins 0-3 map to IRQ bits 2-5 */
-	unsigned long gpio_irqs = (intr_src >> 2);
-	int gpio;
-
-	for_each_set_bit(gpio, &gpio_irqs, TI_K3_RTC_MAX_GPIOS)
-		generic_handle_irq(priv->virq_gpios[gpio]);
 
 	return 0;
 }
