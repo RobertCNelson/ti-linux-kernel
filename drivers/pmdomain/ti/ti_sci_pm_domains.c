@@ -227,6 +227,7 @@ static int ti_sci_pm_domain_probe(struct platform_device *pdev)
 	struct of_phandle_args args;
 	u32 max_id = 0;
 	int index;
+	int ret;
 
 	pd_provider = devm_kzalloc(dev, sizeof(*pd_provider), GFP_KERNEL);
 	if (!pd_provider)
@@ -249,8 +250,6 @@ static int ti_sci_pm_domain_probe(struct platform_device *pdev)
 						   index, &args)) {
 
 			if (args.args_count >= 1 && args.np == dev->of_node) {
-				bool is_on;
-
 				of_node_put(args.np);
 				if (args.args[0] > max_id) {
 					max_id = args.args[0];
@@ -284,11 +283,6 @@ static int ti_sci_pm_domain_probe(struct platform_device *pdev)
 				    pd_provider->ti_sci->ops.pm_ops.set_latency_constraint)
 					pd->pd.domain.ops.suspend = ti_sci_pd_suspend;
 
-				is_on = ti_sci_pm_pd_is_on(pd_provider,
-							   pd->idx);
-
-				pm_genpd_init(&pd->pd, NULL, !is_on);
-
 				list_add(&pd->node, &pd_provider->pd_list);
 			} else {
 				of_node_put(args.np);
@@ -296,6 +290,28 @@ static int ti_sci_pm_domain_probe(struct platform_device *pdev)
 
 			index++;
 		}
+	}
+
+	/* Initialize power domains with their current state */
+	bool *states __free(kfree) = kcalloc(max_id + 1,
+					     sizeof(*states), GFP_KERNEL);
+
+	if (!states)
+		return -ENOMEM;
+
+	ret = pd_provider->ti_sci->ops.dev_ops.get_states_bulk(
+			pd_provider->ti_sci, 0, max_id, states, max_id + 1);
+	if (ret) {
+		/* Fall back to individual queries */
+		list_for_each_entry(pd, &pd_provider->pd_list, node) {
+			bool is_on;
+
+			is_on = ti_sci_pm_pd_is_on(pd_provider, pd->idx);
+			pm_genpd_init(&pd->pd, NULL, !is_on);
+		}
+	} else {
+		list_for_each_entry(pd, &pd_provider->pd_list, node)
+			pm_genpd_init(&pd->pd, NULL, !states[pd->idx]);
 	}
 
 	pd_provider->data.domains =
