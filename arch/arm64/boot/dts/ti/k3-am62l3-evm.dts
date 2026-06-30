@@ -205,6 +205,18 @@
 			};
 		};
 	};
+
+	wkup_src_notify: wkup-src-notify {
+		compatible = "ti,wkup-src-notify";
+		ti,wkup-sources = <&wkup_uart0 0x2 0 0>,	/* WKUP_USART0 */
+				  <&wkup_gpio0 0x4 0 0>,	/* WKUP_GPIO0 */
+				  <&wkup_rtc0 0x80 0 0>,	/* WKUP_RTC0 */
+				  <&usb0 0x200 0 0>,		/* USB0_IN_BAND */
+				  <&usb1 0x400 0 0>,		/* USB1_IN_BAND */
+				  <&gpio0 0x10000 5 0x6b>,	/* MAIN_IO_DAISY_CHAIN */
+				  <&uart0 0x10000 0 0x6d>,	/* MAIN_IO_DAISY_CHAIN */
+				  <&wkup_rtc0 0x40000 0 0>;	/* RTC_IO */
+	};
 };
 
 &gpio0 {
