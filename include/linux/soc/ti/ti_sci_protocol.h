@@ -111,6 +111,9 @@ struct ti_sci_dev_ops {
 		       bool *req_state, bool *current_state);
 	int (*is_on)(const struct ti_sci_handle *handle, u32 id,
 		     bool *req_state, bool *current_state);
+	int (*get_states_bulk)(const struct ti_sci_handle *handle,
+			       u32 start_id, u32 max_id,
+			       bool *states, u32 num_states);
 	int (*is_transitioning)(const struct ti_sci_handle *handle, u32 id,
 				bool *current_state);
 	int (*set_device_resets)(const struct ti_sci_handle *handle, u32 id,
