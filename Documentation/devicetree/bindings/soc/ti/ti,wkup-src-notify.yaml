@@ -1,0 +1,67 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+# Copyright (C) 2026 Texas Instruments Incorporated - https://www.ti.com/
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/soc/ti/ti,wkup-src-notify.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: TI K3 Wakeup Source Notify
+
+maintainers:
+  - Kendall Willis <k-willis@ti.com>
+
+description:
+  On TI AM62L SoC, the firmware exposes wakeup reason bitmask, last
+  last entered low power mode, and pad pin that woke up the system
+  via an SMC call after the system resumes from a low power state. This
+  driver reads the wakeup reason bitmask and injects the corresponding
+  Linux virtual IRQs so that wakeup source drivers (GPIO controllers,
+  UARTs, RTC, etc.) can be notified.
+
+  Each entry in ti,wkup-sources maps a wakeup source bitmask to a device,
+  an optional interrupt index within that device's interrupt list, and a
+  an optional wakeup pin. The wakeup pin is only valid for IO daisy-chain
+  wakeup sources, otherwise the value mapped is ignored.
+
+properties:
+  compatible:
+    const: ti,wkup-src-notify
+
+  ti,wkup-sources:
+    $ref: /schemas/types.yaml#/definitions/phandle-array
+    description:
+      List of wakeup sources. Each entry is a phandle to the wakeup source
+      device followed by three cells.
+    items:
+      items:
+        - description: Phandle to the wakeup source device.
+        - description:
+            Wakeup source bitmask. This value is ANDed against the bitmask
+            returned by the firmware SMC call to determine if this source
+            caused the wakeup.
+          minimum: 1
+        - description:
+            Index into the wakeup source device's interrupts list to use
+            as the virtual IRQ to inject on wakeup if applicable.
+          minimum: 0
+        - description:
+            Wakeup pin. Used to identify which pad pin triggered an
+            IO daisy-chain wakeup. Set to 0 for non-IO-daisy-chain sources.
+          minimum: 0
+
+required:
+  - compatible
+  - ti,wkup-sources
+
+additionalProperties: false
+
+examples:
+  - |
+    wkup-src-notify {
+        compatible = "ti,wkup-src-notify";
+        ti,wkup-sources =
+            <&wkup_uart0 0x2 0 0>,          /* WKUP_USART0 */
+            <&wkup_rtc0  0x80 0 0>,         /* WKUP_RTC0 */
+            <&uart0      0x10000 0 0x1b4>;  /* MAIN_IO_DAISY_CHAIN, pin 0x1b4 */
+    };
+...
