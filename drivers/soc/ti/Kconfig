@@ -77,6 +77,16 @@ config TI_K3_SOCINFO
 	  efuse driver provides access to GP_SW1 silicon revision data that
 	  chipinfo requires on TI AM62Px SoCs.
 
+config TI_K3_WKUP_SRC_NOTIFY
+	tristate "TI K3 wakeup source notifier"
+	depends on ARCH_K3 && HAVE_ARM_SMCCC
+	help
+	  Driver for the TI K3 AM62L SoC wakeup source dispatcher. On
+	  resume, queries firmware via SMC for the wakeup source and
+	  injects the corresponding IRQ into the responsible device driver.
+
+	  If unsure, say N.
+
 config TI_PRUSS
 	tristate "TI PRU-ICSS Subsystem Platform drivers"
 	depends on SOC_AM33XX || SOC_AM43XX || SOC_DRA7XX || ARCH_KEYSTONE || ARCH_K3 || COMPILE_TEST
