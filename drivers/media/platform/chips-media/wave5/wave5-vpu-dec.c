@@ -1788,6 +1788,7 @@ static void wave5_vpu_dec_device_run(void *priv)
 	struct queue_status_info q_status;
 	u32 fail_res = 0;
 	int ret = 0;
+	bool cmd_issued = false;
 
 	dev_dbg(inst->dev->dev, "%s: Fill the ring buffer with new bitstream data", __func__);
 	pm_runtime_resume_and_get(inst->dev->dev);
@@ -1885,6 +1886,7 @@ static void wave5_vpu_dec_device_run(void *priv)
 			inst->retry = false;
 			if (!inst->eos)
 				inst->queuing_num--;
+			cmd_issued = true;
 		}
 		break;
 	default:
@@ -1902,8 +1904,16 @@ finish_job_and_return:
 	 * in power and CPU time.
 	 * If EOS is passed, device_run will not call job_finish no more, it is called
 	 * only if HW is idle status in order to reduce overhead.
+	 *
+	 * Deferring job_finish() is only safe when this run actually queued a
+	 * DEC_PIC command (cmd_issued): that guarantees a completion IRQ, and
+	 * thus a later finish_decode(), will release the shared job slot. When
+	 * device_run() is entered with no command to issue (e.g. a job that was
+	 * queued while draining but reached the STOP state by the time it ran),
+	 * no IRQ follows, so finish the job here to avoid leaking the slot and
+	 * stalling every instance sharing the VPU.
 	 */
-	if (!inst->sent_eos)
+	if (!inst->sent_eos || !cmd_issued)
 		v4l2_m2m_job_finish(inst->v4l2_m2m_dev, m2m_ctx);
 }
 
