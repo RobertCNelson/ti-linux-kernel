@@ -25,6 +25,7 @@
 #define TI_SCI_MSG_SET_DEVICE_STATE	0x0200
 #define TI_SCI_MSG_GET_DEVICE_STATE	0x0201
 #define TI_SCI_MSG_SET_DEVICE_RESETS	0x0202
+#define TI_SCI_MSG_GET_DEVICE_MULTIPLE	0x0204
 
 /* Clock requests */
 #define TI_SCI_MSG_SET_CLOCK_STATE	0x0100
@@ -152,6 +153,7 @@ struct ti_sci_msg_req_reboot {
  *		MSG_FLAG_CAPS_LPM_ABORT: Abort entry to LPM
  *		MSG_FLAG_CAPS_IO_ISOLATION: IO Isolation support
  *		MSG_FLAG_CAPS_LPM_BOARDCFG_MANAGED: LPM config done statically for the DM via boardcfg
+ *		MSG_FLAG_CAPS_GET_DEVICE_MULTIPLE: Bulk device state query support
  *		MSG_FLAG_CAPS_LPM_IRQ_CONTEXT_LOST: DM is not able to restore IRQ context
  *		MSG_FLAG_CAPS_LPM_CLK_CONTEXT_LOST: DM is not able to restore Clock context
  *
@@ -168,6 +170,7 @@ struct ti_sci_msg_resp_query_fw_caps {
 #define MSG_FLAG_CAPS_IO_ISOLATION	TI_SCI_MSG_FLAG(7)
 #define MSG_FLAG_CAPS_CLOCK_SSC		TI_SCI_MSG_FLAG(10)
 #define MSG_FLAG_CAPS_LPM_BOARDCFG_MANAGED	TI_SCI_MSG_FLAG(12)
+#define MSG_FLAG_CAPS_GET_DEVICE_MULTIPLE	TI_SCI_MSG_FLAG(13)
 #define MSG_FLAG_CAPS_LPM_IRQ_CONTEXT_LOST	TI_SCI_MSG_FLAG(14)
 #define MSG_FLAG_CAPS_LPM_CLK_CONTEXT_LOST	TI_SCI_MSG_FLAG(15)
 #define MSG_MASK_CAPS_LPM		GENMASK_ULL(4, 1)
@@ -246,6 +249,40 @@ struct ti_sci_msg_resp_get_device_state {
 #define MSG_DEVICE_HW_STATE_ON		1
 #define MSG_DEVICE_HW_STATE_TRANS	2
 	u8 current_state;
+} __packed;
+
+/**
+ * struct ti_sci_msg_req_get_device_multiple - Request to get state of multiple devices
+ * @hdr:		Generic header
+ * @start_device_id:	Device ID to begin querying from. Set to 0 for first batch.
+ *			For next batch, add count from previous response.
+ *
+ * Request type is TI_SCI_MSG_GET_DEVICE_MULTIPLE, responds with device states
+ * as a bitmap where each device uses 2 bits to represent its state.
+ */
+struct ti_sci_msg_req_get_device_multiple {
+	struct ti_sci_msg_hdr hdr;
+	u16 start_device_id;
+} __packed;
+
+/**
+ * struct ti_sci_msg_resp_get_device_multiple - Response containing device states
+ * @hdr:		Generic header
+ * @count:		Number of device states included in this response
+ * @remaining:		Number of remaining devices that did not fit in this response
+ * @device_state_bitmap: Bitmap indexed by device ID. Each device uses 2 bits.
+ *			Bitmap encoding: 00=OFF, 01=ON, 10=TRANSITIONING, 11=reserved
+ *			To extract state for device N:
+ *			word_idx = N / 16, bit_pos = (N % 16) * 2
+ *			state = (bitmap[word_idx] >> bit_pos) & 0x3
+ *
+ * Response to request TI_SCI_MSG_GET_DEVICE_MULTIPLE.
+ */
+struct ti_sci_msg_resp_get_device_multiple {
+	struct ti_sci_msg_hdr hdr;
+	u16 count;
+	u16 remaining;
+	u32 device_state_bitmap[10];
 } __packed;
 
 /**

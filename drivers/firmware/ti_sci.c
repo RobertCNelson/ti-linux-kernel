@@ -855,6 +855,121 @@ static int ti_sci_cmd_dev_is_on(const struct ti_sci_handle *handle, u32 id,
 }
 
 /**
+ * ti_sci_get_on_from_bitmap() - Extract device ON state from bitmap
+ * @device_state_bitmap: The bitmap containing device states
+ * @relative_id: Relative device ID within this bitmap
+ *
+ * Each device uses 2 bits: 00=OFF, 01=ON, 10=TRANSITIONING
+ * Returns true if device is ON, false otherwise (device is OFF or TRANSITIONING)
+ */
+static bool ti_sci_get_on_from_bitmap(u32 *device_state_bitmap, u32 relative_id)
+{
+	u32 word_idx, bit_pos, state;
+
+	word_idx = relative_id / 16;  /* 16 devices per u32 (32 bits / 2 bits per device) */
+	bit_pos = (relative_id % 16) * 2;
+	state = (device_state_bitmap[word_idx] >> bit_pos) & 0x3;
+
+	/* State encoding: 0=OFF, 1=ON, 2=TRANSITIONING */
+	return (state == MSG_DEVICE_HW_STATE_ON);
+}
+
+/**
+ * ti_sci_cmd_dev_get_states_bulk() - Get state of multiple devices
+ * @handle:	Pointer to TISCI handle
+ * @start_id:	Starting device ID to query from
+ * @max_id:	Maximum device ID to query (inclusive)
+ * @states:	Pointer to bool array to store device states (true=ON, false=OFF/TRANSITIONING)
+ * @num_states: Size of the states array
+ *
+ * This function queries device states in bulk using the TISCI firmware API
+ * and handles pagination internally. The firmware returns up to 160 device
+ * states per call using a bitmap encoding. This function abstracts away the
+ * bitmap format and provides a simple bool array interface.
+ *
+ * Return: 0 if all went fine, else return appropriate error.
+ */
+static int ti_sci_cmd_dev_get_states_bulk(const struct ti_sci_handle *handle,
+					  u32 start_id, u32 max_id,
+					  bool *states, u32 num_states)
+{
+	struct ti_sci_info *info;
+	struct ti_sci_msg_req_get_device_multiple *req;
+	struct ti_sci_msg_resp_get_device_multiple *resp;
+	struct ti_sci_xfer *xfer;
+	struct device *dev;
+	u32 current_device_id = start_id;
+	int ret = 0;
+	int i;
+
+	if (IS_ERR(handle))
+		return PTR_ERR(handle);
+	if (!handle || !states || num_states == 0)
+		return -EINVAL;
+	if (max_id < start_id)
+		return -EINVAL;
+
+	info = handle_to_ti_sci_info(handle);
+	dev = info->dev;
+
+	/* Check if firmware supports bulk device state query API */
+	if (!(info->fw_caps & MSG_FLAG_CAPS_GET_DEVICE_MULTIPLE))
+		return -EOPNOTSUPP;
+
+	/* Query devices in batches until we cover the entire range */
+	while (current_device_id <= max_id) {
+		xfer = ti_sci_get_one_xfer(info, TI_SCI_MSG_GET_DEVICE_MULTIPLE,
+					   TI_SCI_FLAG_REQ_ACK_ON_PROCESSED,
+					   sizeof(*req), sizeof(*resp));
+		if (IS_ERR(xfer)) {
+			ret = PTR_ERR(xfer);
+			dev_err(dev, "Message alloc failed(%d)\n", ret);
+			return ret;
+		}
+
+		req = (struct ti_sci_msg_req_get_device_multiple *)xfer->xfer_buf;
+		req->start_device_id = current_device_id;
+
+		ret = ti_sci_do_xfer(info, xfer);
+		if (ret) {
+			dev_err(dev, "Mbox send fail %d\n", ret);
+			ti_sci_put_one_xfer(&info->minfo, xfer);
+			return ret;
+		}
+
+		resp = (struct ti_sci_msg_resp_get_device_multiple *)xfer->xfer_buf;
+		if (!ti_sci_is_response_ack(resp)) {
+			ret = -ENODEV;
+			ti_sci_put_one_xfer(&info->minfo, xfer);
+			return ret;
+		}
+
+		/* Validate count to prevent issues from bad firmware response */
+		if (resp->count == 0) {
+			dev_warn(dev, "Firmware returned count=0 at start_id=%u\n",
+				 current_device_id);
+			ti_sci_put_one_xfer(&info->minfo, xfer);
+			return -EIO;
+		}
+
+		/* Parse the bitmap directly and fill the states array */
+		for (i = 0; i < resp->count && current_device_id <= max_id;
+		     i++, current_device_id++) {
+			u32 array_idx = current_device_id - start_id;
+
+			if (array_idx < num_states)
+				states[array_idx] = ti_sci_get_on_from_bitmap(
+							resp->device_state_bitmap, i);
+		}
+
+		ti_sci_put_one_xfer(&info->minfo, xfer);
+	}
+
+	return 0;
+}
+
+
+/**
  * ti_sci_cmd_dev_is_trans() - Check if the device is currently transitioning
  * @handle:	Pointer to TISCI handle
  * @id:		Device Identifier
@@ -3399,6 +3514,7 @@ static void ti_sci_setup_ops(struct ti_sci_info *info)
 	dops->is_idle = ti_sci_cmd_dev_is_idle;
 	dops->is_stop = ti_sci_cmd_dev_is_stop;
 	dops->is_on = ti_sci_cmd_dev_is_on;
+	dops->get_states_bulk = ti_sci_cmd_dev_get_states_bulk;
 	dops->is_transitioning = ti_sci_cmd_dev_is_trans;
 	dops->set_device_resets = ti_sci_cmd_set_device_resets;
 	dops->get_device_resets = ti_sci_cmd_get_device_resets;
@@ -4229,13 +4345,14 @@ static int ti_sci_probe(struct platform_device *pdev)
 	}
 
 	ti_sci_msg_cmd_query_fw_caps(&info->handle, &info->fw_caps);
-	dev_dbg(dev, "Detected firmware capabilities: %s%s%s%s%s%s%s%s\n",
+	dev_dbg(dev, "Detected firmware capabilities: %s%s%s%s%s%s%s%s%s\n",
 		info->fw_caps & MSG_FLAG_CAPS_GENERIC ? "Generic" : "",
 		info->fw_caps & MSG_FLAG_CAPS_LPM_PARTIAL_IO ? " Partial-IO" : "",
 		info->fw_caps & MSG_FLAG_CAPS_LPM_DM_MANAGED ? " DM-Managed" : "",
 		info->fw_caps & MSG_FLAG_CAPS_LPM_ABORT ? " LPM-Abort" : "",
 		info->fw_caps & MSG_FLAG_CAPS_IO_ISOLATION ? " IO-Isolation" : "",
 		info->fw_caps & MSG_FLAG_CAPS_LPM_BOARDCFG_MANAGED ? " BoardConfig-Managed" : "",
+		info->fw_caps & MSG_FLAG_CAPS_GET_DEVICE_MULTIPLE ? " Bulk-Device-Query" : "",
 		info->fw_caps & MSG_FLAG_CAPS_LPM_IRQ_CONTEXT_LOST ? " IRQ-Context-Lost" : "",
 		info->fw_caps & MSG_FLAG_CAPS_LPM_CLK_CONTEXT_LOST ? " Clk-Context-Lost" : ""
 	);
