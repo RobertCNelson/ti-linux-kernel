@@ -1052,6 +1052,7 @@
 		clock-names = "fck";
 		assigned-clocks = <&k3_clks 190 0>;
 		assigned-clock-parents = <&k3_clks 190 2>;
+		assigned-clock-rates = <320000000>;
 		power-domains = <&k3_pds 190 TI_SCI_PD_EXCLUSIVE>;
 		status = "disabled";
 	};
@@ -1072,6 +1073,7 @@
 		clock-names = "fck";
 		assigned-clocks = <&k3_clks 191 0>;
 		assigned-clock-parents = <&k3_clks 191 2>;
+		assigned-clock-rates = <320000000>;
 		power-domains = <&k3_pds 191 TI_SCI_PD_EXCLUSIVE>;
 		status = "disabled";
 	};
@@ -1092,6 +1094,7 @@
 		clock-names = "fck";
 		assigned-clocks = <&k3_clks 192 0>;
 		assigned-clock-parents = <&k3_clks 192 2>;
+		assigned-clock-rates = <320000000>;
 		power-domains = <&k3_pds 192 TI_SCI_PD_EXCLUSIVE>;
 		status = "disabled";
 	};
