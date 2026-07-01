@@ -813,6 +813,50 @@ int dev_pm_genpd_rpm_always_on(struct device *dev, bool on)
 EXPORT_SYMBOL_GPL(dev_pm_genpd_rpm_always_on);
 
 /**
+ * dev_pm_genpd_set_always_on() - Dynamically control GENPD_FLAG_ALWAYS_ON.
+ *
+ * @dev: Device whose PM domain flag should be updated.
+ * @on: If true, set GENPD_FLAG_ALWAYS_ON to prevent the domain from being
+ *      powered off during both runtime and system suspend. If false, clear
+ *      the flag to restore normal power-management behaviour. Clearing is
+ *      refused with -EPERM if the flag was already set at domain init time
+ *      (from DT or platform data), as that represents a hardware requirement
+ *      that must not be overridden by a consumer driver.
+ *
+ * It is assumed that the caller guarantees the genpd is not detached while
+ * this function is executing.
+ *
+ * Return: Returns 0 on success and negative error values on failures.
+ */
+int dev_pm_genpd_set_always_on(struct device *dev, bool on)
+{
+	struct generic_pm_domain *genpd;
+
+	genpd = dev_to_genpd_safe(dev);
+	if (!genpd)
+		return -ENODEV;
+
+	/*
+	 * If GENPD_FLAG_ALWAYS_ON was set at init time (from DT or platform
+	 * data), do not allow clearing it dynamically. The domain was
+	 * configured as always-on by the hardware description and that must
+	 * not be overridden by a consumer driver.
+	 */
+	if (!on && (genpd->flags_init & GENPD_FLAG_ALWAYS_ON))
+		return -EPERM;
+
+	genpd_lock(genpd);
+	if (on)
+		genpd->flags |= GENPD_FLAG_ALWAYS_ON;
+	else
+		genpd->flags &= ~GENPD_FLAG_ALWAYS_ON;
+	genpd_unlock(genpd);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(dev_pm_genpd_set_always_on);
+
+/**
  * dev_pm_genpd_is_on() - Get device's current power domain status
  *
  * @dev: Device to get the current power status
@@ -2493,6 +2537,9 @@ int pm_genpd_init(struct generic_pm_domain *genpd,
 		pr_err("always-on PM domain %s is not on\n", genpd->name);
 		return -EINVAL;
 	}
+
+	/* Record initial flags so dynamic APIs cannot override DT/platform config */
+	genpd->flags_init = genpd->flags;
 
 	/* Multiple states but no governor doesn't make sense. */
 	if (!gov && genpd->state_count > 1)

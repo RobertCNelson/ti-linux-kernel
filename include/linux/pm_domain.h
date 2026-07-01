@@ -232,6 +232,7 @@ struct generic_pm_domain {
 	void (*detach_dev)(struct generic_pm_domain *domain,
 			   struct device *dev);
 	unsigned int flags;		/* Bit field of configs for genpd */
+	unsigned int flags_init;	/* Flags set at init (DT/platform) */
 	struct genpd_power_state *states;
 	void (*free_states)(struct genpd_power_state *states,
 			    unsigned int state_count);
@@ -330,6 +331,7 @@ void dev_pm_genpd_synced_poweroff(struct device *dev);
 int dev_pm_genpd_set_hwmode(struct device *dev, bool enable);
 bool dev_pm_genpd_get_hwmode(struct device *dev);
 int dev_pm_genpd_rpm_always_on(struct device *dev, bool on);
+int dev_pm_genpd_set_always_on(struct device *dev, bool on);
 bool dev_pm_genpd_is_on(struct device *dev);
 
 extern struct dev_power_governor simple_qos_governor;
@@ -419,6 +421,11 @@ static inline bool dev_pm_genpd_get_hwmode(struct device *dev)
 }
 
 static inline int dev_pm_genpd_rpm_always_on(struct device *dev, bool on)
+{
+	return -EOPNOTSUPP;
+}
+
+static inline int dev_pm_genpd_set_always_on(struct device *dev, bool on)
 {
 	return -EOPNOTSUPP;
 }
