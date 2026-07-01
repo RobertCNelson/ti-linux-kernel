@@ -151,6 +151,11 @@ wants to retrieve the missing routes, it can issue a new
       - The route is immutable. Set by the driver. Indicates that the
 	``V4L2_SUBDEV_ROUTE_FL_ACTIVE`` flag of an immutable route may not be
 	unset.
+    * - ``V4L2_SUBDEV_ROUTE_FL_STATIC``
+      - 0x0004
+      - The route is static. Set by the driver. Indicates that the route is
+        always present and cannot be removed. Implies
+        ``V4L2_SUBDEV_ROUTE_FL_IMMUTABLE``.
 
 Return Value
 ============
