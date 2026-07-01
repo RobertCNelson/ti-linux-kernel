@@ -484,7 +484,7 @@ static int hsr_xmit(struct sk_buff *skb, struct hsr_port *port,
 		    struct hsr_frame_info *frame)
 {
 	if (!port->hsr->fwd_offloaded &&
-	    frame->port_rcv->type == HSR_PT_MASTER) {
+	    frame->port_rcv->type == HSR_PT_MASTER && !frame->has_foreign_header) {
 		hsr_addr_subst_dest(frame->node_src, skb, port);
 
 		/* Address substitution (IEC62439-3 pp 26, 50): replace mac
@@ -634,11 +634,12 @@ static void hsr_forward_do(struct hsr_frame_info *frame)
 {
 	unsigned int dir_ports = 0;
 	struct hsr_port *port;
-	struct sk_buff *skb;
 	bool sent = false;
 
 	hsr_for_each_port(frame->port_rcv->hsr, port) {
 		struct hsr_priv *hsr = port->hsr;
+		struct sk_buff *skb = NULL;
+
 		/* Don't send frame back the way it came */
 		if (port == frame->port_rcv)
 			continue;
@@ -656,6 +657,17 @@ static void hsr_forward_do(struct hsr_frame_info *frame)
 		 */
 		if ((port->dev->features & NETIF_F_HW_HSR_DUP) && sent)
 			continue;
+
+		/* PTP TX packets have an outgoing port specified */
+		if (frame->req_tx_port != HSR_PT_NONE && frame->req_tx_port != port->type)
+			continue;
+		/* PTP TX packets may already have a HSR header which needs to
+		 * be preserved
+		 */
+		if (frame->has_foreign_header && frame->skb_std) {
+			skb = skb_clone(frame->skb_std, GFP_ATOMIC);
+			goto inject_into_stack;
+		}
 
 		/* Don't send frame over port where it has been sent before.
 		 * Also if rx LRE is offloaded, hardware does duplication
@@ -692,6 +704,7 @@ static void hsr_forward_do(struct hsr_frame_info *frame)
 			stripped_skb_get_shared_info(skb, frame);
 		}
 
+inject_into_stack:
 		if (!skb) {
 			frame->port_rcv->dev->stats.rx_dropped++;
 			continue;
@@ -760,6 +773,13 @@ int hsr_fill_frame_info(__be16 proto, struct sk_buff *skb,
 	struct hsr_port *port = frame->port_rcv;
 	struct hsr_priv *hsr = port->hsr;
 
+	if (frame->has_foreign_header) {
+		frame->skb_std = skb;
+
+		WARN_ON_ONCE(port->type != HSR_PT_MASTER);
+		WARN_ON_ONCE(skb->mac_len < sizeof(struct hsr_ethhdr));
+		return 0;
+	}
 	/* HSRv0 supervisory frames double as a tag so treat them as tagged. */
 	if ((!hsr->prot_version && proto == htons(ETH_P_PRP)) ||
 	    proto == htons(ETH_P_HSR)) {
@@ -801,7 +821,8 @@ int prp_fill_frame_info(__be16 proto, struct sk_buff *skb,
 }
 
 static int fill_frame_info(struct hsr_frame_info *frame,
-			   struct sk_buff *skb, struct hsr_port *port)
+			   struct sk_buff *skb, struct hsr_port *port,
+			   enum hsr_port_type tx_port, bool has_hsr_header)
 {
 	struct hsr_priv *hsr = port->hsr;
 	struct hsr_vlan_ethhdr *vlan_hdr;
@@ -834,7 +855,9 @@ static int fill_frame_info(struct hsr_frame_info *frame,
 	/* For Offloaded case, there is no need for node list since
 	 * firmware/hardware implements LRE function.
 	 */
-	if (!hsr->fwd_offloaded) {
+	frame->req_tx_port = tx_port;
+	frame->has_foreign_header = has_hsr_header;
+	if (!hsr->fwd_offloaded && !frame->has_foreign_header) {
 		frame->node_src = hsr_get_node(port, n_db, skb,
 					       frame->is_supervision,
 					       port->type);
@@ -878,10 +901,10 @@ void hsr_forward_skb(struct sk_buff *skb, struct hsr_port *port,
 	struct hsr_frame_info frame;
 
 	rcu_read_lock();
-	if (fill_frame_info(&frame, skb, port) < 0)
+	if (fill_frame_info(&frame, skb, port, tx_port, has_hsr_header) < 0)
 		goto out_drop;
 	/* No need to register frame when rx offload is supported */
-	if (!port->hsr->fwd_offloaded)
+	if (!port->hsr->fwd_offloaded && !frame.has_foreign_header)
 		hsr_register_frame_in(frame.node_src, port, frame.sequence_nr);
 	hsr_forward_do(&frame);
 	rcu_read_unlock();
