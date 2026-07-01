@@ -1,0 +1,389 @@
+// SPDX-License-Identifier: GPL-2.0-only OR MIT
+/**
+ * DT overlay for TAS67CD-AEC daughter card on AM62D-EVM's AEC1 connector.
+ *
+ * Audio Expansion Connector 1 (AEC1):
+ *   McASP1 + I2C2, MMC2 pads (mux mode 1)
+ *
+ * The TAS67CD-AEC carries two TAS6754 quad-channel Class-D amplifiers
+ * on a shared 16-slot TDM DSP_B bus.
+ *
+ * Copyright (C) 2026 Texas Instruments Incorporated - https://www.ti.com/
+ */
+
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/gpio/gpio.h>
+#include "k3-pinctrl.h"
+
+/*
+ * TAS67CD-AEC power supplies:
+ *
+ * DVDD (1.8V IOVDD): AM62D-EVM PMIC buck3 (referenced directly as &buck3)
+ * PVDD: External power supply source.
+ * VBAT: Hardwired to PVDD on the board.
+ */
+&{/} {
+	tas67cd_pvdd: regulator-tas67cd-pvdd {
+		compatible = "regulator-fixed";
+		regulator-name = "tas67cd-pvdd";
+		regulator-min-microvolt = <12000000>;
+		regulator-max-microvolt = <12000000>;
+		regulator-always-on;
+	};
+};
+
+/*
+ * AEC1 pin routing
+ *   MCASP1_ACLKX â MMC2_SDCD  (0x0124, F22, mode 1)
+ *   MCASP1_AFSX  â MMC2_SDWP  (0x0128, E21, mode 1)
+ *   MCASP1_AXR0  â MMC2_DAT0  (0x0114, E20, mode 1)  Combined SDIN
+ *   MCASP1_AXR2  â MMC2_DAT2  (0x010C, G20, mode 1)  TAS0 SDOUT
+ *   MCASP1_AXR3  â MMC2_DAT3  (0x0108, F20, mode 1)  TAS1 SDOUT
+ *
+ * Standby GPIOs
+ *   TAS0 STBY â GPMC0_OEn_REn = GPIO0_33 (0x0088, L17)
+ *   TAS1 STBY â GPMC0_WEn     = GPIO0_34 (0x008C, K19)
+ */
+&main_pmx0 {
+	mcasp1_tas67cd_pins: mcasp1-tas67cd-pins {
+		pinctrl-single,pins = <
+			AM62DX_IOPAD(0x0124, PIN_INPUT, 1)  /* (F22) MMC2_SDCD.MCASP1_ACLKX */
+			AM62DX_IOPAD(0x0128, PIN_INPUT, 1)  /* (E21) MMC2_SDWP.MCASP1_AFSX */
+			AM62DX_IOPAD(0x0114, PIN_OUTPUT, 1) /* (E20) MMC2_DAT0.MCASP1_AXR0 */
+			AM62DX_IOPAD(0x010c, PIN_INPUT, 1)  /* (G20) MMC2_DAT2.MCASP1_AXR2 */
+			AM62DX_IOPAD(0x0108, PIN_INPUT, 1)  /* (F20) MMC2_DAT3.MCASP1_AXR3 */
+		>;
+	};
+
+	tas67cd_stby_pins: tas67cd-stby-pins {
+		pinctrl-single,pins = <
+			AM62DX_IOPAD(0x0088, PIN_OUTPUT, 7) /* (L17) GPMC0_OEn_REn.GPIO0_33 */
+			AM62DX_IOPAD(0x008c, PIN_OUTPUT, 7) /* (K19) GPMC0_WEn.GPIO0_34 */
+		>;
+	};
+};
+
+&mcasp1 {
+	status = "okay";
+	#sound-dai-cells = <0>;
+
+	pinctrl-names = "default";
+	pinctrl-0 = <&mcasp1_tas67cd_pins>;
+
+	op-mode = <0>;
+	tdm-slots = <16>;
+	serial-dir = <	/* 0: INACTIVE, 1: TX, 2: RX */
+		1 0 2 2	/* AXR0=TX (TAS0/1), AXR2=RX (TAS0), AXR3=RX (TAS1) */
+		0 0 0 0
+		0 0 0 0
+		0 0 0 0
+	>;
+
+	ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		/*
+		 * Port 0: FE playback DAI (McASP DAI ID 0).
+		 * McASP is bus/frame provider.
+		 */
+		port@0 {
+			reg = <0>;
+
+			mcasp1_port0_ep: endpoint {
+				dai-format = "dsp_b";
+				bitclock-master;
+				frame-master;
+				/* CDCE6214_CLK_OUT1 */
+				clocks = <&cdce6214 3>;
+				remote-endpoint = <&fe_pb_ep>;
+			};
+		};
+
+		/* Port 1: FE capture DAI (McASP DAI ID 1) */
+		port@1 {
+			reg = <1>;
+
+			mcasp1_port1_ep: endpoint {
+				dai-format = "dsp_b";
+				bitclock-master;
+				frame-master;
+				/* CDCE6214_CLK_OUT1 */
+				clocks = <&cdce6214 3>;
+				remote-endpoint = <&fe_cap_ep>;
+			};
+		};
+	};
+};
+
+/*
+ * TAS6754 TDM slot assignment (16 slots):
+ *
+ *   SDIN (playback - AXR0):
+ *     Slots  0-3 : TAS0 Audio    (ti,audio-slot-no = 0)
+ *     Slots  4-7 : TAS1 Audio    (ti,audio-slot-no = 4)
+ *     Slots  8-11: TAS0 ANC LL   (ti,llp-slot-no   = 8)
+ *     Slots 12-15: TAS1 ANC LL   (ti,llp-slot-no   = 12)
+ *
+ *   SDOUT (capture / diagnostics, 2 RX serializers):
+ *     AXR2 (TAS0): Slots 0-3 Vpredict, Slots 4-7 Isense
+ *     AXR3 (TAS1): Slots 0-3 Vpredict, Slots 4-7 Isense
+ *
+ * Note: TAS6754 only has one SCLK and one FSYNC for the entire device,
+ * therefore both playback and capture share the same 16 slot TDM config,
+ * only 8 out of 16 slots are used for capture.
+ */
+&main_i2c2 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	pinctrl-0 = <&main_i2c2_pins_default &tas67cd_stby_pins>;
+
+	tas6754_0: tas6754@70 {
+		compatible = "ti,tas67524";
+		reg = <0x70>;
+		#sound-dai-cells = <1>;
+		sound-name-prefix = "TAS0";
+
+		dvdd-supply = <&buck3>;
+		pvdd-supply = <&tas67cd_pvdd>;
+
+		standby-gpios = <&main_gpio0 33 GPIO_ACTIVE_LOW>;
+
+		ti,audio-slot-no = <0>;
+		ti,llp-slot-no = <8>;
+		ti,vpredict-slot-no = <0>;
+		ti,isense-slot-no = <4>;
+
+		/*
+		 * Routed to SW4, on/high to unmute and off/low to mute
+		 */
+		ti,gpio1-function = "mute";
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			dai-format = "dsp_b";
+
+			port@0 {
+				reg = <0>;
+
+				tas0_audio_ep: endpoint {
+					remote-endpoint =
+						<&be_tas0_audio_ep>;
+				};
+			};
+
+			port@1 {
+				reg = <1>;
+
+				tas0_anc_ep: endpoint {
+					remote-endpoint =
+						<&be_tas0_anc_ep>;
+				};
+			};
+
+			port@2 {
+				reg = <2>;
+
+				tas0_fb_ep: endpoint {
+					remote-endpoint =
+						<&be_tas0_fb_ep>;
+				};
+			};
+		};
+	};
+
+	tas6754_1: tas6754@71 {
+		compatible = "ti,tas67524";
+		reg = <0x71>;
+		#sound-dai-cells = <1>;
+		sound-name-prefix = "TAS1";
+
+		dvdd-supply = <&buck3>;
+		pvdd-supply = <&tas67cd_pvdd>;
+
+		standby-gpios = <&main_gpio0 34 GPIO_ACTIVE_LOW>;
+
+		ti,audio-slot-no = <4>;
+		ti,llp-slot-no = <12>;
+		ti,vpredict-slot-no = <0>;
+		ti,isense-slot-no = <4>;
+
+		/*
+		 * Routed to SW2, on/high to unmute and off/low to mute
+		 */
+		ti,gpio1-function = "mute";
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			dai-format = "dsp_b";
+
+			port@0 {
+				reg = <0>;
+
+				tas1_audio_ep: endpoint {
+					remote-endpoint =
+						<&be_tas1_audio_ep>;
+				};
+			};
+
+			port@1 {
+				reg = <1>;
+
+				tas1_anc_ep: endpoint {
+					remote-endpoint =
+						<&be_tas1_anc_ep>;
+				};
+			};
+
+			port@2 {
+				reg = <2>;
+
+				tas1_fb_ep: endpoint {
+					remote-endpoint =
+						<&be_tas1_fb_ep>;
+				};
+			};
+		};
+	};
+};
+
+/* audio-graph-card2 DPCM sound card */
+&{/} {
+	sound_tas67cd: sound-tas67cd {
+		compatible = "audio-graph-card2";
+		label = "TAS67CD-AEC";
+
+		widgets = "Speaker", "TAS0 Speaker",
+			  "Speaker", "TAS1 Speaker";
+
+		routing =
+			/* FE CPU -> BE codec (playback path) */
+			"TAS0 Playback", "Playback Port 0",
+			"TAS1 Playback", "Playback Port 0",
+			"TAS0 ANC Playback", "Playback Port 0",
+			"TAS1 ANC Playback", "Playback Port 0",
+
+			/* BE codec -> FE CPU (capture path) */
+			"Capture Port 1", "TAS0 Feedback Capture",
+			"Capture Port 1", "TAS1 Feedback Capture",
+
+			/* TAS0 codec outputs -> board speaker */
+			"TAS0 Speaker", "TAS0 OUT_CH1",
+			"TAS0 Speaker", "TAS0 OUT_CH2",
+			"TAS0 Speaker", "TAS0 OUT_CH3",
+			"TAS0 Speaker", "TAS0 OUT_CH4",
+
+			/* TAS1 codec outputs -> board speaker */
+			"TAS1 Speaker", "TAS1 OUT_CH1",
+			"TAS1 Speaker", "TAS1 OUT_CH2",
+			"TAS1 Speaker", "TAS1 OUT_CH3",
+			"TAS1 Speaker", "TAS1 OUT_CH4",
+
+			/* Board speaker -> codec input */
+			"TAS0 SPEAKER_LOAD", "TAS0 Speaker",
+			"TAS1 SPEAKER_LOAD", "TAS1 Speaker";
+
+		links = <&mcasp1_fe_pb>, <&mcasp1_fe_cap>,
+			<&be_tas0_audio>, <&be_tas0_anc>, <&be_tas0_fb>,
+			<&be_tas1_audio>, <&be_tas1_anc>, <&be_tas1_fb>;
+
+		dpcm {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			/* Front-End: 2 FE DAIs on McASP1 */
+			ports@0 {
+				reg = <0>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				mcasp1_fe_pb: port@0 {
+					reg = <0>;
+					playback-only;
+
+					fe_pb_ep: endpoint {
+						remote-endpoint =
+							<&mcasp1_port0_ep>;
+					};
+				};
+
+				mcasp1_fe_cap: port@1 {
+					reg = <1>;
+					capture-only;
+
+					fe_cap_ep: endpoint {
+						remote-endpoint =
+							<&mcasp1_port1_ep>;
+					};
+				};
+			};
+
+			/* Back-End: 6 BE links (2 chips x 3 DAIs) */
+			ports@1 {
+				reg = <1>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				/* TAS0 (0x70) backends */
+				be_tas0_audio: port@0 {
+					reg = <0>;
+
+					be_tas0_audio_ep: endpoint {
+						remote-endpoint =
+							<&tas0_audio_ep>;
+					};
+				};
+
+				be_tas0_anc: port@1 {
+					reg = <1>;
+
+					be_tas0_anc_ep: endpoint {
+						remote-endpoint =
+							<&tas0_anc_ep>;
+					};
+				};
+
+				be_tas0_fb: port@2 {
+					reg = <2>;
+
+					be_tas0_fb_ep: endpoint {
+						remote-endpoint =
+							<&tas0_fb_ep>;
+					};
+				};
+
+				/* TAS1 (0x71) backends */
+				be_tas1_audio: port@3 {
+					reg = <3>;
+
+					be_tas1_audio_ep: endpoint {
+						remote-endpoint =
+							<&tas1_audio_ep>;
+					};
+				};
+
+				be_tas1_anc: port@4 {
+					reg = <4>;
+
+					be_tas1_anc_ep: endpoint {
+						remote-endpoint =
+							<&tas1_anc_ep>;
+					};
+				};
+
+				be_tas1_fb: port@5 {
+					reg = <5>;
+
+					be_tas1_fb_ep: endpoint {
+						remote-endpoint =
+							<&tas1_fb_ep>;
+					};
+				};
+			};
+		};
+	};
+};
