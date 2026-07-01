@@ -92,6 +92,11 @@ struct dispc_features {
 	u32 num_vids;
 	struct dispc_vid_info vid_info[TIDSS_MAX_PLANES];
 	u32 vid_order[TIDSS_MAX_PLANES];
+
+	/*
+	 * Size of the DMA FIFO buffer available for self-refresh mode in bytes.
+	 */
+	u32 selfrefresh_fifo_size;
 };
 
 extern const struct dispc_features dispc_k2g_feats;
@@ -122,6 +127,9 @@ void dispc_vp_disable(struct dispc_device *dispc, u32 hw_videoport);
 void dispc_vp_unprepare(struct dispc_device *dispc, u32 hw_videoport);
 bool dispc_vp_go_busy(struct dispc_device *dispc, u32 hw_videoport);
 void dispc_vp_go(struct dispc_device *dispc, u32 hw_videoport);
+void dispc_plane_set_self_refresh(struct dispc_device *dispc, u32 hw_plane, u32 enable);
+bool dispc_plane_can_selfrefresh(struct dispc_device *dispc, u32 hw_plane,
+				 const struct drm_plane_state *state);
 int dispc_vp_bus_check(struct dispc_device *dispc, u32 hw_videoport,
 		       const struct drm_crtc_state *state);
 enum drm_mode_status dispc_vp_mode_valid(struct dispc_device *dispc,

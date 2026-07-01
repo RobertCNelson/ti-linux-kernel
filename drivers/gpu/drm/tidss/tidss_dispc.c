@@ -109,6 +109,8 @@ const struct dispc_features dispc_k2g_feats = {
 	},
 
 	.vid_order = { 0 },
+
+	.selfrefresh_fifo_size = 0,
 };
 
 static const u16 tidss_am65x_common_regs[DISPC_COMMON_REG_TABLE_LEN] = {
@@ -191,6 +193,8 @@ const struct dispc_features dispc_am65x_feats = {
 	},
 
 	.vid_order = {1, 0},
+
+	.selfrefresh_fifo_size = 40 * 1024,
 };
 
 static const u16 tidss_j721e_common_regs[DISPC_COMMON_REG_TABLE_LEN] = {
@@ -297,6 +301,8 @@ const struct dispc_features dispc_j721e_feats = {
 	},
 
 	.vid_order = { 1, 3, 0, 2 },
+
+	.selfrefresh_fifo_size = 64 * 1024,
 };
 
 static const u16 tidss_am62_common1_regs[DISPC_COMMON_REG_TABLE_LEN] = {
@@ -365,6 +371,8 @@ const struct dispc_features dispc_am625_feats = {
 	},
 
 	.vid_order = {1, 0},
+
+	.selfrefresh_fifo_size = 40 * 1024,
 };
 
 const struct dispc_features dispc_am62a7_feats = {
@@ -421,6 +429,8 @@ const struct dispc_features dispc_am62a7_feats = {
 	},
 
 	.vid_order = {1, 0},
+
+	.selfrefresh_fifo_size = 40 * 1024,
 };
 
 const struct dispc_features dispc_am62l_feats = {
@@ -453,6 +463,8 @@ const struct dispc_features dispc_am62l_feats = {
 	},
 
 	.vid_order = {0},
+
+	.selfrefresh_fifo_size = 20 * 1024,
 };
 
 static const u16 *dispc_common_regmap;
@@ -1268,6 +1280,14 @@ void dispc_vp_go(struct dispc_device *dispc, u32 hw_videoport)
 			   DISPC_VP_CONTROL_GOBIT_MASK));
 	VP_REG_FLD_MOD(dispc, hw_videoport, DISPC_VP_CONTROL, 1,
 		       DISPC_VP_CONTROL_GOBIT_MASK);
+}
+
+void dispc_plane_set_self_refresh(struct dispc_device *dispc, u32 hw_plane, u32 enable)
+{
+	dev_dbg(dispc->dev, "%s: plane%u SELFREFRESH bit -> %u\n",
+		__func__, hw_plane, enable);
+	VID_REG_FLD_MOD(dispc, hw_plane, DISPC_VID_ATTRIBUTES, enable,
+			DISPC_VID_ATTRIBUTES_SELFREFRESH_MASK);
 }
 
 enum c8_to_c12_mode { C8_TO_C12_REPLICATE, C8_TO_C12_MAX, C8_TO_C12_MIN };
@@ -2332,6 +2352,37 @@ void dispc_plane_enable(struct dispc_device *dispc, u32 hw_plane, bool enable)
 {
 	VID_REG_FLD_MOD(dispc, hw_plane, DISPC_VID_ATTRIBUTES, !!enable,
 			DISPC_VID_ATTRIBUTES_ENABLE_MASK);
+}
+
+bool dispc_plane_can_selfrefresh(struct dispc_device *dispc, u32 hw_plane,
+				 const struct drm_plane_state *state)
+{
+	u32 fifo_size, frame_size;
+	u32 cpp, width, height;
+	bool capable;
+
+	if (!state->fb)
+		return false;
+
+	fifo_size = dispc->feat->selfrefresh_fifo_size;
+	if (!fifo_size)
+		return false;
+
+	/* Calculate frame size in bytes */
+	cpp = state->fb->format->cpp[0];
+	width = state->src_w >> 16;
+	height = state->src_h >> 16;
+	frame_size = width * height * cpp;
+
+	capable = frame_size < fifo_size;
+
+	dev_dbg(dispc->dev,
+		"%s: plane%u %ux%u cpp=%u frame=%u fifo=%u -> %s\n",
+		__func__, hw_plane, width, height, cpp,
+		frame_size, fifo_size,
+		capable ? "CAPABLE" : "NOT CAPABLE (frame too large)");
+
+	return capable;
 }
 
 static u32 dispc_vid_get_fifo_size(struct dispc_device *dispc, u32 hw_plane)
