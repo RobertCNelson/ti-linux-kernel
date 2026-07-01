@@ -124,3 +124,15 @@ In general, changing the embedded data layout from the driver-configured values
 is not supported. The height of the metadata is device-specific and the width
 is that (or less of that) of the image width, as configured on the pixel data
 stream.
+
+CCS and non-CCS embedded data layout
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Embedded data which is fully compliant with CCS definitions uses ``CCS embedded
+data layout <media-metadata-layout-ccs>`` (level 3) for :ref:`the metadata
+layout control <image_source_control_metadata_layout>`. Device-specific embedded
+data compliant with either MIPI CCS embedded data levels 1 or 2 only shall not
+use CCS embedded data mbus code, but may refer to CCS embedded data
+documentation with the level of conformance specified and omit documenting these
+aspects of the layout. The rest of the device-specific embedded data layout is
+documented in the context of the data layout itself.
