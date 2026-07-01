@@ -405,16 +405,23 @@ static int tas675x_set_dcldg_trigger(struct snd_kcontrol *kcontrol,
 					      (state >> 4) != TAS675X_STATE_LOAD_DIAG,
 				       TAS675X_POLL_INTERVAL_US,
 				       TAS675X_STATE_TRANSITION_TIMEOUT_US);
-	ret |= regmap_read_poll_timeout(tas->regmap, TAS675X_STATE_REPORT_CH3_CH4_REG,
-					state34, (state34 & 0x0F) != TAS675X_STATE_LOAD_DIAG &&
-						 (state34 >> 4) != TAS675X_STATE_LOAD_DIAG,
-					TAS675X_POLL_INTERVAL_US,
-					TAS675X_STATE_TRANSITION_TIMEOUT_US);
 	if (ret) {
 		dev_err(tas->dev,
-			"DC LDG: abort timeout (CH1/2=0x%02x [%s/%s], CH3/4=0x%02x [%s/%s])\n",
-			state, tas675x_state_name(state), tas675x_state_name(state >> 4),
-			state34, tas675x_state_name(state34), tas675x_state_name(state34 >> 4));
+			"DC LDG: abort timeout CH1/2=0x%02x [%s/%s]\n",
+			state, tas675x_state_name(state & 0x0F),
+			tas675x_state_name(state >> 4));
+		goto out_restore_ldg_ctrl;
+	}
+	ret = regmap_read_poll_timeout(tas->regmap, TAS675X_STATE_REPORT_CH3_CH4_REG,
+				       state34, (state34 & 0x0F) != TAS675X_STATE_LOAD_DIAG &&
+					(state34 >> 4) != TAS675X_STATE_LOAD_DIAG,
+				       TAS675X_POLL_INTERVAL_US,
+				       TAS675X_STATE_TRANSITION_TIMEOUT_US);
+	if (ret) {
+		dev_err(tas->dev,
+			"DC LDG: abort timeout CH3/4=0x%02x [%s/%s]\n",
+			state34, tas675x_state_name(state34 & 0x0F),
+			tas675x_state_name(state34 >> 4));
 		goto out_restore_ldg_ctrl;
 	}
 
@@ -433,15 +440,22 @@ static int tas675x_set_dcldg_trigger(struct snd_kcontrol *kcontrol,
 				       state, state == TAS675X_STATE_LOAD_DIAG_BOTH,
 				       TAS675X_POLL_INTERVAL_US,
 				       TAS675X_STATE_TRANSITION_TIMEOUT_US);
-	ret |= regmap_read_poll_timeout(tas->regmap, TAS675X_STATE_REPORT_CH3_CH4_REG,
-					state34, state34 == TAS675X_STATE_LOAD_DIAG_BOTH,
-					TAS675X_POLL_INTERVAL_US,
-					TAS675X_STATE_TRANSITION_TIMEOUT_US);
 	if (ret) {
 		dev_err(tas->dev,
-			"DC LDG: LOAD_DIAG timeout (CH1/2=0x%02x [%s/%s], CH3/4=0x%02x [%s/%s])\n",
-			state, tas675x_state_name(state), tas675x_state_name(state >> 4),
-			state34, tas675x_state_name(state34), tas675x_state_name(state34 >> 4));
+			"DC LDG: LOAD_DIAG timeout CH1/2=0x%02x [%s/%s]\n",
+			state, tas675x_state_name(state & 0x0F),
+			tas675x_state_name(state >> 4));
+		goto out_restore_hiz;
+	}
+	ret = regmap_read_poll_timeout(tas->regmap, TAS675X_STATE_REPORT_CH3_CH4_REG,
+				       state34, state34 == TAS675X_STATE_LOAD_DIAG_BOTH,
+				       TAS675X_POLL_INTERVAL_US,
+				       TAS675X_STATE_TRANSITION_TIMEOUT_US);
+	if (ret) {
+		dev_err(tas->dev,
+			"DC LDG: LOAD_DIAG timeout CH3/4=0x%02x [%s/%s]\n",
+			state34, tas675x_state_name(state34 & 0x0F),
+			tas675x_state_name(state34 >> 4));
 		goto out_restore_hiz;
 	}
 
@@ -459,15 +473,22 @@ static int tas675x_set_dcldg_trigger(struct snd_kcontrol *kcontrol,
 				       state, state == TAS675X_STATE_SLEEP_BOTH,
 				       TAS675X_POLL_INTERVAL_US,
 				       TAS675X_DC_LDG_TIMEOUT_US);
-	ret |= regmap_read_poll_timeout(tas->regmap, TAS675X_STATE_REPORT_CH3_CH4_REG,
+	if (ret) {
+		dev_err(tas->dev,
+			"DC LDG: SLEEP timeout CH1/2=0x%02x [%s/%s]\n",
+			state, tas675x_state_name(state & 0x0F),
+			tas675x_state_name(state >> 4));
+		goto out_restore_hiz;
+	}
+	ret = regmap_read_poll_timeout(tas->regmap, TAS675X_STATE_REPORT_CH3_CH4_REG,
 				       state34, state34 == TAS675X_STATE_SLEEP_BOTH,
 				       TAS675X_POLL_INTERVAL_US,
 				       TAS675X_DC_LDG_TIMEOUT_US);
 	if (ret) {
 		dev_err(tas->dev,
-			"DC LDG: SLEEP timeout (CH1/2=0x%02x [%s/%s], CH3/4=0x%02x [%s/%s])\n",
-			state, tas675x_state_name(state), tas675x_state_name(state >> 4),
-			state34, tas675x_state_name(state34), tas675x_state_name(state34 >> 4));
+			"DC LDG: SLEEP timeout CH3/4=0x%02x [%s/%s]\n",
+			state34, tas675x_state_name(state34 & 0x0F),
+			tas675x_state_name(state34 >> 4));
 		goto out_restore_hiz;
 	}
 
