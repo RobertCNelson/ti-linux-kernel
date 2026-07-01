@@ -64,8 +64,51 @@ static void tidss_crtc_finish_page_flip(struct tidss_crtc *tcrtc)
 void tidss_crtc_vblank_irq(struct drm_crtc *crtc)
 {
 	struct tidss_crtc *tcrtc = to_tidss_crtc(crtc);
+	struct drm_device *ddev = crtc->dev;
+	struct tidss_device *tidss = to_tidss(ddev);
 
 	drm_crtc_handle_vblank(crtc);
+
+	/*
+	 * Enable self-refresh if pending, per hardware requirement:
+	 * "Once the GO bit has been set, the SW must read the GO bit to ensure
+	 * that the frame has been loaded into the buffer, then it can set the
+	 * SELFREFRESH to '1'."
+	 *
+	 * At vblank IRQ (after VFP), GO bit should be clear, meaning frame
+	 * is loaded into FIFO buffer. Now it's safe to enable self-refresh.
+	 *
+	 * Use snapshot saved in atomic_flush to avoid race with concurrent commits.
+	 */
+	if (!tidss->shared_mode || tidss->shared_mode_owned_vps[tcrtc->hw_videoport]) {
+		unsigned int i;
+
+		if (!dispc_vp_go_busy(tidss->dispc, tcrtc->hw_videoport)) {
+			/*
+			 * GO bit cleared â FIFO is loaded.  Iterate planes
+			 * belonging to this CRTC and enable SELFREFRESH for
+			 * any that have a pending request.  The snapshot is
+			 * indexed by hw_plane_id (set in atomic_flush) so the
+			 * lookup is direct and correct regardless of vid_order.
+			 */
+			for (i = 0; i < tidss->num_planes; i++) {
+				struct drm_plane *plane = tidss->planes[i];
+				struct tidss_plane *tplane = to_tidss_plane(plane);
+				u32 hw_id = tplane->hw_plane_id;
+
+				if (!tcrtc->self_refresh_pending_enable[hw_id])
+					continue;
+
+				dev_dbg(ddev->dev,
+					"vblank vp%u hw_plane%u: GO clear -> enabling SELFREFRESH\n",
+					tcrtc->hw_videoport, hw_id);
+				dispc_plane_set_self_refresh(tidss->dispc, hw_id, 1);
+
+				tplane->self_refresh_active = true;
+				tcrtc->self_refresh_pending_enable[hw_id] = false;
+			}
+		}
+	}
 
 	tidss_crtc_finish_page_flip(tcrtc);
 }
@@ -140,11 +183,34 @@ static void tidss_crtc_position_planes(struct tidss_device *tidss,
 	    !to_tidss_crtc_state(cstate)->plane_pos_changed)
 		return;
 
-	for (layer = 0; layer < tidss->feat->num_vids ; layer++) {
+	for (layer = 0; layer < tidss->feat->num_vids; layer++) {
 		struct drm_plane_state *pstate;
 		struct drm_plane *plane;
 		bool layer_active = false;
+		bool sr_active = false;
 		int i;
+
+		/*
+		 * When self-refresh is active the hardware plane is still
+		 * scanning from its on-chip FIFO buffer. Preserve the overlay
+		 * position so that the frozen frame stays at its original
+		 * on-screen position.
+		 */
+		for_each_old_plane_in_state(ostate, plane, pstate, i) {
+			if (pstate->normalized_zpos != layer)
+				continue;
+
+			if (to_tidss_plane(plane)->self_refresh_active) {
+				dev_dbg(tidss->dev,
+					"position_planes: layer%d keeping overlay (self-refresh active)\n",
+					layer);
+				sr_active = true;
+				break;
+			}
+		}
+
+		if (sr_active)
+			continue;
 
 		for_each_new_plane_in_state(ostate, plane, pstate, i) {
 			if (pstate->crtc != crtc || !pstate->visible)
@@ -208,6 +274,31 @@ static void tidss_crtc_atomic_flush(struct drm_crtc *crtc,
 	WARN_ON(drm_crtc_vblank_get(crtc) != 0);
 
 	spin_lock_irqsave(&ddev->event_lock, flags);
+
+	/* Snapshot self-refresh pending state indexed by hw_plane_id. */
+	memset(tcrtc->self_refresh_pending_enable, 0,
+	       sizeof(tcrtc->self_refresh_pending_enable));
+	for (unsigned int i = 0; i < tidss->num_planes; i++) {
+		struct drm_plane *plane = tidss->planes[i];
+		struct tidss_plane *tplane = to_tidss_plane(plane);
+		struct drm_plane_state *pstate = plane->state;
+		struct tidss_plane_state *tstate;
+
+		if (!pstate || pstate->crtc != crtc)
+			continue;
+
+		tstate = to_tidss_plane_state(pstate);
+		tcrtc->self_refresh_pending_enable[tplane->hw_plane_id] =
+			tstate->self_refresh_pending_enable;
+
+		dev_dbg(ddev->dev,
+			"%s: vp%u hw_plane%u sr_pending_snapshot=%d (active=%d req=%d)\n",
+			__func__, tcrtc->hw_videoport, tplane->hw_plane_id,
+			tcrtc->self_refresh_pending_enable[tplane->hw_plane_id],
+			tplane->self_refresh_active,
+			tstate->self_refresh_requested);
+	}
+
 	dispc_vp_go(tidss->dispc, tcrtc->hw_videoport);
 
 	WARN_ON(tcrtc->event);

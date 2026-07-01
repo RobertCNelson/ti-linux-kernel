@@ -286,6 +286,13 @@ int tidss_modeset_init(struct tidss_device *tidss)
 	ddev->mode_config.funcs = &mode_config_funcs;
 	ddev->mode_config.helper_private = &mode_config_helper_funcs;
 
+	/* Create self-refresh property */
+	tidss->self_refresh_property =
+		drm_property_create_bool(ddev, 0, "SELF_REFRESH");
+	if (!tidss->self_refresh_property) {
+		dev_err(tidss->dev, "Failed to create SELF_REFRESH property\n");
+		return -ENOMEM;
+	}
 	ret = tidss_dispc_modeset_init(tidss);
 	if (ret)
 		return ret;
