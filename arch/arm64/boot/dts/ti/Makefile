@@ -58,6 +58,7 @@ dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk-ub954-evm-ov2312.dtb
 # Boards with AM62Dx SoC
 dtb-$(CONFIG_ARCH_K3) += k3-am62d2-evm.dtb
 dtb-$(CONFIG_ARCH_K3) += k3-am62d2-evm-dsp-controlled-audio.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-am62d-evm-tas67cd-aec.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62l3-evm-ecap-capture.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62l3-evm-epaper.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62l3-evm-eqep.dtbo
@@ -303,6 +304,8 @@ k3-am62p5-sk-microtips-mf101hie-panel-dtbs := k3-am62p5-sk.dtb \
 	k3-am62p5-sk-microtips-mf101hie-panel.dtbo
 k3-am62p5-sk-microtips-mf103hie-lcd2-dtbs := k3-am62p5-sk.dtb \
 	k3-am62p5-sk-microtips-mf103hie-lcd2.dtbo
+k3-am62d-evm-tas67cd-aec-dtbs := k3-am62d2-evm.dtb k3-am62d-evm-tas67cd-aec.dtbo
+
 k3-am642-evm-icssg0-dtbs := \
 	k3-am642-evm.dtb k3-am642-evm-icssg0.dtbo
 k3-am642-evm-icssg1-dualemac-dtbs := \
