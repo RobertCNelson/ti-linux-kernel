@@ -209,6 +209,11 @@ struct v4l2_subdev_capability {
  * unset.
  */
 #define V4L2_SUBDEV_ROUTE_FL_IMMUTABLE		(1U << 1)
+/*
+ * Is the route static? The STATIC flag of an immutable route may not be
+ * unset.
+ */
+#define V4L2_SUBDEV_ROUTE_FL_STATIC		(1U << 2)
 
 /**
  * struct v4l2_subdev_route - A route inside a subdev
