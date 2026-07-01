@@ -41,6 +41,8 @@
 			next-level-cache = <&l2_0>;
 			operating-points-v2 = <&a53_opp_table>;
 			clocks = <&scmi_clk 356>;
+			power-domains = <&CPU_PD>;
+			power-domain-names = "psci";
 		};
 
 		cpu1: cpu@1 {
@@ -57,6 +59,8 @@
 			next-level-cache = <&l2_0>;
 			operating-points-v2 = <&a53_opp_table>;
 			clocks = <&scmi_clk 357>;
+			power-domains = <&CPU_PD>;
+			power-domain-names = "psci";
 		};
 	};
 
@@ -112,4 +116,164 @@
 			opp-suspend;
 		};
 	};
+
+	idle-states {
+		entry-method = "psci";
+
+		cpu_sleep_stby: stby {
+			compatible = "arm,idle-state";
+			idle-state-name = "CPU Standby";
+			arm,psci-suspend-param = <0x00000001>;
+			entry-latency-us = <25>;
+			exit-latency-us = <100>;
+			min-residency-us = <1000>;
+		};
+
+		cpu_sleep_pwrdwn: powerdown {
+			compatible = "arm,idle-state";
+			idle-state-name = "PowerDown";
+			arm,psci-suspend-param = <0x012233>;
+			entry-latency-us = <150000>;
+			exit-latency-us = <100000>;
+			min-residency-us = <1000000>;
+			local-timer-stop;
+		};
+	};
+
+	domain-idle-states {
+		cluster_sleep_stby: cluster_stby {
+			compatible = "domain-idle-state";
+			idle-state-name = "Cluster Standby";
+			arm,psci-suspend-param = <0x01000021>;
+			entry-latency-us = <200>;
+			exit-latency-us = <300>;
+			min-residency-us = <10000>;
+		};
+
+		main_sleep_dss: main-sleep-dss {
+			compatible = "domain-idle-state";
+			idle-state-name = "DSS DeepSleep";
+			arm,psci-suspend-param = <0x2012236>;
+			entry-latency-us = <150000>;
+			exit-latency-us = <100000>;
+			min-residency-us = <250000>;
+			local-timer-stop;
+		};
+
+		main_sleep_deep: main-sleep-deep {
+			compatible = "domain-idle-state";
+			idle-state-name = "DeepSleep";
+			arm,psci-suspend-param = <0x2012235>;
+			entry-latency-us = <250000>;
+			exit-latency-us = <100000>;
+			min-residency-us = <500000>;
+			local-timer-stop;
+		};
+
+		main_sleep_rtcddr: main-sleep-rtcddr {
+			compatible = "domain-idle-state";
+			idle-state-name = "RTC+DDR";
+			arm,psci-suspend-param = <0x2012234>;
+			entry-latency-us = <300000>;
+			exit-latency-us = <600000>;
+			min-residency-us = <1000000>;
+			local-timer-stop;
+		};
+	};
+};
+
+&psci {
+	CPU_PD: power-controller-cpu {
+		#power-domain-cells = <0>;
+		power-domains = <&CLUSTER_PD>;
+		domain-idle-states = <&cpu_sleep_stby>, <&cpu_sleep_pwrdwn>;
+	};
+
+	CLUSTER_PD: power-controller-cluster {
+		#power-domain-cells = <0>;
+		power-domains = <&SYSTEM_PD>;
+		domain-idle-states = <&cluster_sleep_stby>;
+	};
+
+	DISPLAY_PD: power-controller-display {
+		#power-domain-cells = <0>;
+		power-domains = <&MAIN_PD>;
+	};
+
+	SYSTEM_PD: power-controller-system {
+		#power-domain-cells = <0>;
+		power-domains = <&MAIN_PD>;
+		domain-idle-states = <&main_sleep_dss>;
+	};
+
+	MAIN_PD: power-controller-main {
+		#power-domain-cells = <0>;
+		power-domains = <&SOC_PD>;
+		domain-idle-states = <&main_sleep_deep>;
+	};
+
+	WKUP_PD: power-controller-wakeup {
+		#power-domain-cells = <0>;
+		power-domains = <&SOC_PD>;
+	};
+
+	SOC_PD: power-controller-soc {
+		#power-domain-cells = <0>;
+		domain-idle-states = <&main_sleep_rtcddr>;
+	};
+
+	RTC_PD: power-controller-rtc {
+		#power-domain-cells = <0>;
+	};
+};
+
+&scmi_pds {
+	power-domain-map = <38 &DISPLAY_PD>, /* DSS_DSI0 */
+			   <39 &DISPLAY_PD>, /* DSS0 */
+			   <86 &DISPLAY_PD>, /* DPHY_TX0 */
+			   <15 &SYSTEM_PD>, /* TIMER0 */
+			   <16 &SYSTEM_PD>, /* TIMER1 */
+			   <17 &SYSTEM_PD>, /* TIMER2 */
+			   <18 &SYSTEM_PD>, /* TIMER3 */
+			   <23 &SYSTEM_PD>, /* ECAP0 */
+			   <24 &SYSTEM_PD>, /* ECAP1 */
+			   <25 &SYSTEM_PD>, /* ECAP2/ELM0 */
+			   <26 &SYSTEM_PD>, /* SDHCI1 */
+			   <27 &SYSTEM_PD>, /* SDHCI2 */
+			   <28 &SYSTEM_PD>, /* SDHCI0 */
+			   <29 &SYSTEM_PD>, /* EQEP0 */
+			   <30 &SYSTEM_PD>, /* EQEP1 */
+			   <31 &SYSTEM_PD>, /* EQEP2 */
+			   <32 &SYSTEM_PD>, /* OSPI0 */
+			   <34 &SYSTEM_PD>, /* GPIO0 */
+			   <35 &SYSTEM_PD>, /* GPIO2 */
+			   <37 &SYSTEM_PD>, /* GPMC0 */
+			   <40 &SYSTEM_PD>, /* EPWM0 */
+			   <41 &SYSTEM_PD>, /* EPWM1 */
+			   <42 &SYSTEM_PD>, /* EPWM2 */
+			   <47 &SYSTEM_PD>, /* MCAN0 */
+			   <48 &SYSTEM_PD>, /* MCAN1 */
+			   <49 &SYSTEM_PD>, /* MCAN2 */
+			   <53 &SYSTEM_PD>, /* I2C0 */
+			   <54 &SYSTEM_PD>, /* I2C1 */
+			   <55 &SYSTEM_PD>, /* I2C2 */
+			   <56 &SYSTEM_PD>, /* I2C3 */
+			   <72 &SYSTEM_PD>, /* SPI0 */
+			   <73 &SYSTEM_PD>, /* SPI1 */
+			   <74 &SYSTEM_PD>, /* SPI2 */
+			   <75 &SYSTEM_PD>, /* SPI3 */
+			   <77 &SYSTEM_PD>, /* UART1 */
+			   <78 &SYSTEM_PD>, /* UART2 */
+			   <79 &SYSTEM_PD>, /* UART3 */
+			   <80 &SYSTEM_PD>, /* UART4 */
+			   <81 &SYSTEM_PD>, /* UART5 */
+			   <82 &SYSTEM_PD>, /* UART6 */
+			   <89 &SYSTEM_PD>, /* UART0 */
+			   <19 &WKUP_PD>, /* WKUP_TIMER0 */
+			   <20 &WKUP_PD>, /* WKUP_TIMER1 */
+			   <36 &WKUP_PD>, /* WKUP_GPIO0 */
+			   <57 &WKUP_PD>, /* WKUP_I2C0 */
+			   <83 &WKUP_PD>, /* WKUP_UART */
+			   <95 &WKUP_PD>, /* USBSS0 */
+			   <96 &WKUP_PD>; /* USBSS1 */
 };
