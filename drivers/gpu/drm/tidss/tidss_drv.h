@@ -13,6 +13,7 @@
 
 #define TIDSS_MAX_PORTS 4
 #define TIDSS_MAX_PLANES 4
+#define TIDSS_MAX_AOD_DEVS_PER_PORT 10
 #define TIDSS_MAX_OLDI_TXES 2
 
 typedef u32 dispc_irq_t;
@@ -57,11 +58,28 @@ struct tidss_device {
 
 	/* Custom properties */
 	struct drm_property *self_refresh_property;
+	struct drm_property *always_on_display_property;
+
+	/*
+	 * Per-VP flag tracking whether GENPD_FLAG_ALWAYS_ON has been set for
+	 * this video port's display pipeline.
+	 */
+	bool always_on_pd[TIDSS_MAX_PORTS];
+
+	/*
+	 * Platform devices for external bridges (e.g. cdns-dsi) and their
+	 * PM suppliers (e.g. D-PHY) attached to respective TIDSS video port.
+	 */
+	struct device_node *aod_bridge_of_node[TIDSS_MAX_PORTS];
+	bool aod_bridge_devs_collected[TIDSS_MAX_PORTS];
+	struct device *aod_bridge_devs[TIDSS_MAX_PORTS][TIDSS_MAX_AOD_DEVS_PER_PORT];
+	unsigned int aod_num_bridge_devs[TIDSS_MAX_PORTS];
 };
 
 #define to_tidss(__dev) container_of(__dev, struct tidss_device, ddev)
 
 int tidss_runtime_get(struct tidss_device *tidss);
 void tidss_runtime_put(struct tidss_device *tidss);
+void tidss_aod_set_genpd_always_on(struct tidss_device *tidss, u32 hw_videoport, bool on);
 
 #endif

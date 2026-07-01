@@ -4,6 +4,8 @@
  * Author: Tomi Valkeinen <tomi.valkeinen@ti.com>
  */
 
+#include <linux/pm_domain.h>
+
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc.h>
@@ -240,6 +242,8 @@ static void tidss_crtc_atomic_flush(struct drm_crtc *crtc,
 {
 	struct drm_crtc_state *old_crtc_state = drm_atomic_get_old_crtc_state(state,
 									      crtc);
+	struct tidss_crtc_state *old_cs = to_tidss_crtc_state(old_crtc_state);
+	struct tidss_crtc_state *new_cs = to_tidss_crtc_state(crtc->state);
 	struct tidss_crtc *tcrtc = to_tidss_crtc(crtc);
 	struct drm_device *ddev = crtc->dev;
 	struct tidss_device *tidss = to_tidss(ddev);
@@ -249,6 +253,18 @@ static void tidss_crtc_atomic_flush(struct drm_crtc *crtc,
 		__func__, crtc->name, crtc->state->active ? "" : "not ",
 		drm_atomic_crtc_needs_modeset(crtc->state) ? "needs" : "doesn't need",
 		crtc->state->event);
+
+	/*
+	 * Handle ALWAYS_ON_DISPLAY property transitions.
+	 * If set, Keeps power domains ON for TIDSS + bridges/PHYs
+	 */
+	if (old_cs->always_on_display != new_cs->always_on_display) {
+		tidss_aod_set_genpd_always_on(tidss, tcrtc->hw_videoport,
+					      new_cs->always_on_display);
+		dev_dbg(ddev->dev,
+			"%s: ALWAYS_ON_DISPLAY -> %d\n",
+			__func__, new_cs->always_on_display);
+	}
 
 	/*
 	 * Flush CRTC changes with go bit only if new modeset is not
@@ -361,6 +377,29 @@ static void tidss_crtc_atomic_enable(struct drm_crtc *crtc,
 
 	dev_dbg(ddev->dev, "%s, event %p\n", __func__, crtc->state->event);
 
+	/*
+	 * VP still running from suppressed disable (SR+AOD active).
+	 * Skip full VP teardown/re-enable but update plane positions
+	 * and issue GO so the new framebuffer becomes visible.
+	 */
+	if (tcrtc->suppress_disable) {
+		dev_dbg(ddev->dev,
+			"%s: VP running (suppress_disable), updating planes + GO\n",
+			__func__);
+		dispc_vp_setup(tidss->dispc, tcrtc->hw_videoport,
+			       crtc->state, false);
+		tidss_crtc_position_planes(tidss, crtc, old_state, true);
+		dispc_vp_go(tidss->dispc, tcrtc->hw_videoport);
+		drm_crtc_vblank_on(crtc);
+		spin_lock_irqsave(&ddev->event_lock, flags);
+		if (crtc->state->event) {
+			drm_crtc_send_vblank_event(crtc, crtc->state->event);
+			crtc->state->event = NULL;
+		}
+		spin_unlock_irqrestore(&ddev->event_lock, flags);
+		return;
+	}
+
 	tidss_runtime_get(tidss);
 
 	r = dispc_vp_set_clk_rate(tidss->dispc, tcrtc->hw_videoport,
@@ -426,6 +465,20 @@ static void tidss_crtc_atomic_disable(struct drm_crtc *crtc,
 	unsigned long flags;
 
 	dev_dbg(ddev->dev, "%s, event %p\n", __func__, crtc->state->event);
+
+	/* ALWAYS_ON_DISPLAY active, skip VP teardown */
+	if (tcrtc->suppress_disable) {
+		dev_dbg(ddev->dev,
+			"%s: suppressed (suppress_disable set)\n", __func__);
+		spin_lock_irqsave(&ddev->event_lock, flags);
+		if (crtc->state->event) {
+			drm_crtc_send_vblank_event(crtc, crtc->state->event);
+			crtc->state->event = NULL;
+		}
+		spin_unlock_irqrestore(&ddev->event_lock, flags);
+		drm_crtc_vblank_off(crtc);
+		return;
+	}
 
 	reinit_completion(&tcrtc->framedone_completion);
 
@@ -572,6 +625,7 @@ static struct drm_crtc_state *tidss_crtc_duplicate_state(struct drm_crtc *crtc)
 	__drm_atomic_helper_crtc_duplicate_state(crtc, &state->base);
 
 	state->plane_pos_changed = false;
+	state->always_on_display = current_state->always_on_display;
 
 	state->bus_format = current_state->bus_format;
 	state->bus_flags = current_state->bus_flags;
@@ -587,6 +641,38 @@ static void tidss_crtc_destroy(struct drm_crtc *crtc)
 	kfree(tcrtc);
 }
 
+static int tidss_crtc_atomic_set_property(struct drm_crtc *crtc,
+					  struct drm_crtc_state *state,
+					  struct drm_property *property,
+					  uint64_t val)
+{
+	struct tidss_device *tidss = to_tidss(crtc->dev);
+	struct tidss_crtc_state *tcstate = to_tidss_crtc_state(state);
+
+	if (property == tidss->always_on_display_property) {
+		tcstate->always_on_display = !!val;
+		return 0;
+	}
+
+	return -EINVAL;
+}
+
+static int tidss_crtc_atomic_get_property(struct drm_crtc *crtc,
+					  const struct drm_crtc_state *state,
+					  struct drm_property *property,
+					  uint64_t *val)
+{
+	struct tidss_device *tidss = to_tidss(crtc->dev);
+	const struct tidss_crtc_state *tcstate = to_tidss_crtc_state(state);
+
+	if (property == tidss->always_on_display_property) {
+		*val = tcstate->always_on_display;
+		return 0;
+	}
+
+	return -EINVAL;
+}
+
 static const struct drm_crtc_funcs tidss_crtc_funcs = {
 	.reset = tidss_crtc_reset,
 	.destroy = tidss_crtc_destroy,
@@ -594,6 +680,8 @@ static const struct drm_crtc_funcs tidss_crtc_funcs = {
 	.page_flip = drm_atomic_helper_page_flip,
 	.atomic_duplicate_state = tidss_crtc_duplicate_state,
 	.atomic_destroy_state = drm_atomic_helper_crtc_destroy_state,
+	.atomic_set_property = tidss_crtc_atomic_set_property,
+	.atomic_get_property = tidss_crtc_atomic_get_property,
 	.enable_vblank = tidss_crtc_enable_vblank,
 	.disable_vblank = tidss_crtc_disable_vblank,
 };
@@ -650,6 +738,10 @@ struct tidss_crtc *tidss_crtc_create(struct tidss_device *tidss,
 	drm_crtc_enable_color_mgmt(crtc, 0, has_ctm, gamma_lut_size);
 	if (gamma_lut_size)
 		drm_mode_crtc_set_gamma_size(crtc, gamma_lut_size);
+
+	if (tidss->always_on_display_property)
+		drm_object_attach_property(&crtc->base,
+					   tidss->always_on_display_property, 0);
 
 	return tcrtc;
 }
