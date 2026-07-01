@@ -15,6 +15,7 @@ These formats are used for the :ref:`metadata` interface only.
     metafmt-c3-isp
     metafmt-d4xx
     metafmt-generic
+    metadata-layouts
     metafmt-intel-ipu3
     metafmt-pisp-be
     metafmt-pisp-fe
