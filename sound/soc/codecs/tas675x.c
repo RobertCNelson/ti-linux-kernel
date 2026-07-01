@@ -975,10 +975,10 @@ static const struct snd_kcontrol_new tas675x_snd_controls[] = {
 	/* Temperature and Voltage Monitoring */
 	SOC_SINGLE_RO("PVDD Sense", TAS675X_PVDD_SENSE_REG, 0, 0xFF),
 	SOC_SINGLE_RO("Global Temperature", TAS675X_TEMP_GLOBAL_REG, 0, 0xFF),
-	SOC_SINGLE_RO("CH1 Temperature Range", TAS675X_TEMP_CH1_CH2_REG, 6, 3),
-	SOC_SINGLE_RO("CH2 Temperature Range", TAS675X_TEMP_CH1_CH2_REG, 4, 3),
-	SOC_SINGLE_RO("CH3 Temperature Range", TAS675X_TEMP_CH3_CH4_REG, 2, 3),
-	SOC_SINGLE_RO("CH4 Temperature Range", TAS675X_TEMP_CH3_CH4_REG, 0, 3),
+	SOC_SINGLE_RO("CH1 Temperature Range", TAS675X_TEMP_CH1_CH2_REG, 0, 7),
+	SOC_SINGLE_RO("CH2 Temperature Range", TAS675X_TEMP_CH1_CH2_REG, 3, 7),
+	SOC_SINGLE_RO("CH3 Temperature Range", TAS675X_TEMP_CH3_CH4_REG, 0, 7),
+	SOC_SINGLE_RO("CH4 Temperature Range", TAS675X_TEMP_CH3_CH4_REG, 3, 7),
 
 	/* Speaker Protection & Detection */
 	SOC_SINGLE("Tweeter Detection Switch", TAS675X_TWEETER_DETECT_CTRL_REG, 0, 1, 1),
