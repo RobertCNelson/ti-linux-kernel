@@ -1154,7 +1154,7 @@ static int tas675x_hw_params(struct snd_pcm_substream *substream,
 	 * Single clock domain: SDIN and SDOUT share one SCLK/FSYNC pair,
 	 * so all active DAIs must use the same sample rate.
 	 */
-	if ((tas->active_playback_dais || tas->active_capture_dais) &&
+	if ((READ_ONCE(tas->active_playback_dais) || READ_ONCE(tas->active_capture_dais)) &&
 	    tas->rate && tas->rate != rate) {
 		dev_err(component->dev,
 			"Rate %u conflicts with active rate %u\n",
@@ -1418,14 +1418,14 @@ static int tas675x_mute_stream(struct snd_soc_dai *dai, int mute, int direction)
 		set_bit(dai->id, &tas->active_playback_dais);
 
 	/* Last playback stream */
-	if (mute && !tas->active_playback_dais) {
+	if (mute && !READ_ONCE(tas->active_playback_dais)) {
 		ret = tas675x_set_state_all(tas, TAS675X_STATE_SLEEP_BOTH);
 		regmap_read(tas->regmap, TAS675X_CLK_FAULT_LATCHED_REG, &discard);
 		return ret;
 	}
 
 	return tas675x_set_state_all(tas,
-				     tas->active_playback_dais ?
+				     READ_ONCE(tas->active_playback_dais) ?
 					TAS675X_STATE_PLAY_BOTH :
 					TAS675X_STATE_SLEEP_BOTH);
 }
