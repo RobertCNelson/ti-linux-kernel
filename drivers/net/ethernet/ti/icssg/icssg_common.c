@@ -1240,16 +1240,50 @@ enum netdev_tx icssg_ndo_start_xmit(struct sk_buff *skb, struct net_device *ndev
 	 */
 	dst_tag_id = emac->port_id | (q_idx << 8);
 
-	if (prueth->is_hsr_offload_mode &&
-	    (ndev->features & NETIF_F_HW_HSR_DUP)) {
-		if (!(hsr_skb_has_port(skb)))
-			dst_tag_id = PRUETH_UNDIRECTED_PKT_DST_TAG;
-	}
+	if (prueth->is_hsr_offload_mode) {
+		if (prueth->hsr_prp_version == PRP_V1) {
+			/* On PRP, PTP packets are not getting a header and are
+			 * not sent on both ports. Everything else is.
+			 */
+			if (eth_hdr(skb)->h_proto != htons(ETH_P_1588)) {
+				if (ndev->features & NETIF_F_HW_HSR_DUP)
+					dst_tag_id = PRUETH_UNDIRECTED_PKT_DST_TAG;
 
-	if (prueth->is_hsr_offload_mode &&
-	    (ndev->features & NETIF_F_HW_HSR_TAG_INS)) {
-		if (!(hsr_skb_has_header(skb)))
-			epib[1] |= PRUETH_UNDIRECTED_PKT_TAG_INS;
+				if (ndev->features & NETIF_F_HW_HSR_TAG_INS)
+					epib[1] |= PRUETH_UNDIRECTED_PKT_TAG_INS;
+			}
+
+		} else if (prueth->hsr_prp_version == HSR_V1) {
+			bool inner_is_P_1588 = false;
+			bool is_P_1588;
+			bool is_P_HSR;
+
+			/*
+			 * On HSR:
+			 * - all packets except HSR and including PTP get a
+			 *   header added
+			 * - HSR including a PTP frame or PTP frames are not
+			 *   sent on both ports, everything else is.
+			 */
+			is_P_1588 = skb->protocol == htons(ETH_P_1588);
+			is_P_HSR = skb->protocol == htons(ETH_P_HSR);
+			if (is_P_HSR) {
+				struct hsr_ethhdr *hsr_hdr;
+
+				hsr_hdr = (struct hsr_ethhdr *)skb_mac_header(skb);
+				if (hsr_hdr->hsr_tag.encap_proto == htons(ETH_P_1588))
+					inner_is_P_1588 = true;
+			}
+
+			if (ndev->features & NETIF_F_HW_HSR_TAG_INS && !is_P_HSR)
+				epib[1] |= PRUETH_UNDIRECTED_PKT_TAG_INS;
+
+			if (ndev->features & NETIF_F_HW_HSR_DUP &&
+			    (!is_P_1588 && !inner_is_P_1588))
+				dst_tag_id = PRUETH_UNDIRECTED_PKT_DST_TAG;
+		} else {
+			netdev_warn_once(ndev, "Unknown HSR-version\n");
+		}
 	}
 
 	cppi5_desc_set_tags_ids(&first_desc->hdr, 0, dst_tag_id);
