@@ -1,7 +1,7 @@
 .. SPDX-License-Identifier: GPL-2.0 OR GFDL-1.1-no-invariants-or-later
 
 ********************************************************************************************************************************************************************************************************************************************************************************
-V4L2_META_FMT_GENERIC_8 ('MET8'), V4L2_META_FMT_GENERIC_CSI2_10 ('MC1A'), V4L2_META_FMT_GENERIC_CSI2_12 ('MC1C'), V4L2_META_FMT_GENERIC_CSI2_14 ('MC1E'), V4L2_META_FMT_GENERIC_CSI2_16 ('MC1G'), V4L2_META_FMT_GENERIC_CSI2_20 ('MC1K'), V4L2_META_FMT_GENERIC_CSI2_24 ('MC1O')
+V4L2_META_FMT_GENERIC_8 ('MET8'), V4L2_META_FMT_GENERIC_CSI2_10 ('MECA'), V4L2_META_FMT_GENERIC_CSI2_12 ('MECC'), V4L2_META_FMT_GENERIC_CSI2_14 ('MECE'), V4L2_META_FMT_GENERIC_16 ('METG'), V4L2_META_FMT_GENERIC_CSI2_20 ('MECK'), V4L2_META_FMT_GENERIC_24 ('METO')
 ********************************************************************************************************************************************************************************************************************************************************************************
 
 
@@ -29,7 +29,7 @@ is used on CSI-2 for 8 bits per :term:`Data Unit`.
 
 Additionally it is used for 16 bits per Data Unit when two bytes of metadata are
 packed into one 16-bit Data Unit. Otherwise the 16 bits per pixel dataformat is
-:ref:`V4L2_META_FMT_GENERIC_CSI2_16 <v4l2-meta-fmt-generic-csi2-16>`.
+:ref:`V4L2_META_FMT_GENERIC_16 <v4l2-meta-fmt-generic-16>`.
 
 **Byte Order Of V4L2_META_FMT_GENERIC_8.**
 Each cell is one byte. "M" denotes a byte of metadata.
@@ -112,8 +112,8 @@ the data is defined in the MIPI CCS specification.
 
 This format is also used in conjunction with 24 bits per :term:`Data Unit`
 formats that pack two bytes of metadata into one Data Unit. Otherwise the
-24 bits per pixel dataformat is :ref:`V4L2_META_FMT_GENERIC_CSI2_24
-<v4l2-meta-fmt-generic-csi2-24>`.
+24 bits per pixel dataformat is :ref:`V4L2_META_FMT_GENERIC_24
+<v4l2-meta-fmt-generic-24>`.
 
 This format is little endian.
 
@@ -185,14 +185,14 @@ Each cell is one byte. "M" denotes a byte of metadata and "x" a byte of padding.
       - x
       - x
 
-.. _v4l2-meta-fmt-generic-csi2-16:
+.. _v4l2-meta-fmt-generic-16:
 
-V4L2_META_FMT_GENERIC_CSI2_16
------------------------------
+V4L2_META_FMT_GENERIC_16
+------------------------
 
-V4L2_META_FMT_GENERIC_CSI2_16 contains 8-bit generic metadata packed in 16-bit
-Data Units, with one padding byte after every byte of metadata. This format is
-typically used by CSI-2 receivers with a source that transmits
+V4L2_META_FMT_GENERIC_16 contains 8-bit generic metadata packed in 16-bit Data
+Units, with one padding byte after every byte of metadata. This format is
+also used by CSI-2 receivers with a source that transmits
 MEDIA_BUS_FMT_META_16 and the CSI-2 receiver writes the received data to memory
 as-is.
 
@@ -205,7 +205,7 @@ Some devices support more efficient packing of metadata in conjunction with
 
 This format is little endian.
 
-**Byte Order Of V4L2_META_FMT_GENERIC_CSI2_16.**
+**Byte Order Of V4L2_META_FMT_GENERIC_16.**
 Each cell is one byte. "M" denotes a byte of metadata and "x" a byte of padding.
 
 .. tabularcolumns:: |p{2.4cm}|p{1.2cm}|p{.8cm}|p{1.2cm}|p{.8cm}|p{1.2cm}|p{.8cm}|p{1.2cm}|p{.8cm}|
@@ -287,16 +287,15 @@ Each cell is one byte. "M" denotes a byte of metadata and "x" a byte of padding.
       - x
       - x
 
-.. _v4l2-meta-fmt-generic-csi2-24:
+.. _v4l2-meta-fmt-generic-24:
 
-V4L2_META_FMT_GENERIC_CSI2_24
------------------------------
+V4L2_META_FMT_GENERIC_24
+------------------------
 
-V4L2_META_FMT_GENERIC_CSI2_24 contains 8-bit generic metadata packed in 24-bit
-Data Units, with two padding bytes after every byte of metadata. This format is
-typically used by CSI-2 receivers with a source that transmits
-MEDIA_BUS_FMT_META_24 and the CSI-2 receiver writes the received data to memory
-as-is.
+V4L2_META_FMT_GENERIC_24 contains 8-bit generic metadata packed in 24-bit Data
+Units, with two padding bytes after every byte of metadata. This format is also
+used by CSI-2 receivers with a source that transmits MEDIA_BUS_FMT_META_24 and
+the CSI-2 receiver writes the received data to memory as-is.
 
 The packing of the data follows the MIPI CSI-2 specification and the padding of
 the data is defined in the MIPI CCS specification.
