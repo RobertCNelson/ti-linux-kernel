@@ -4,6 +4,8 @@
  * Author: Tomi Valkeinen <tomi.valkeinen@ti.com>
  */
 
+#include <linux/pm_domain.h>
+
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_blend.h>
@@ -168,6 +170,8 @@ static void tidss_plane_atomic_update(struct drm_plane *plane,
 	 */
 	if (tplane->self_refresh_active) {
 		if (!new_tstate->self_refresh_requested) {
+			struct tidss_crtc *tcrtc = to_tidss_crtc(new_state->crtc);
+
 			/* User disabled self-refresh â exit and update HW */
 			dev_dbg(ddev->dev,
 				"plane%u: self-refresh disabled by userspace\n",
@@ -175,6 +179,7 @@ static void tidss_plane_atomic_update(struct drm_plane *plane,
 			dispc_plane_set_self_refresh(tidss->dispc, hw_plane_id, 0);
 			tplane->self_refresh_active = false;
 			new_tstate->self_refresh_pending_enable = false;
+			tcrtc->suppress_disable = false;
 		} else {
 			/*
 			 * Self-refresh still requested â ignore new buffer.
@@ -223,8 +228,30 @@ static void tidss_plane_atomic_disable(struct drm_plane *plane,
 	struct drm_device *ddev = plane->dev;
 	struct tidss_device *tidss = to_tidss(ddev);
 	struct tidss_plane *tplane = to_tidss_plane(plane);
+	struct drm_plane_state *old_state = drm_atomic_get_old_plane_state(state, plane);
 
 	dev_dbg(ddev->dev, "%s\n", __func__);
+
+	/*
+	 * When self-refresh is active AND ALWAYS_ON_DISPLAY is set on the
+	 * CRTC, skip the hardware plane disable so the frozen frame continues
+	 * to scan from the FIFO after the application exits. Also set
+	 * suppress_disable on the CRTC so crtc_atomic_disable skips VP
+	 * teardown (the VP must keep running to scan from FIFO).
+	 */
+	if (tplane->self_refresh_active && old_state->crtc) {
+		struct tidss_crtc *tcrtc = to_tidss_crtc(old_state->crtc);
+		struct tidss_crtc_state *tcstate =
+			to_tidss_crtc_state(old_state->crtc->state);
+
+		if (tcstate->always_on_display) {
+			tcrtc->suppress_disable = true;
+			dev_dbg(ddev->dev,
+				"plane%u: atomic_disable suppressed (SR+AOD active)\n",
+				tplane->hw_plane_id);
+			return;
+		}
+	}
 
 	dispc_plane_enable(tidss->dispc, tplane->hw_plane_id, false);
 }

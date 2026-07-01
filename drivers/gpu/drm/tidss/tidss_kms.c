@@ -4,6 +4,9 @@
  * Author: Tomi Valkeinen <tomi.valkeinen@ti.com>
  */
 
+#include <linux/platform_device.h>
+#include <linux/pm_domain.h>
+
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_bridge.h>
@@ -205,6 +208,14 @@ static int tidss_dispc_modeset_init(struct tidss_device *tidss)
 		pipes[num_pipes].bridge = bridge;
 		pipes[num_pipes].enc_type = enc_type;
 		num_pipes++;
+
+		/*
+		 * Save bridge of_node for lazy AOD device collection.
+		 * Actual device enumeration deferred to first AOD enable
+		 * so all device links (PHY etc.) are guaranteed to exist.
+		 */
+		if (bridge && bridge->of_node)
+			tidss->aod_bridge_of_node[i] = bridge->of_node;
 	}
 
 	/* all planes can be on any crtc */
@@ -286,13 +297,21 @@ int tidss_modeset_init(struct tidss_device *tidss)
 	ddev->mode_config.funcs = &mode_config_funcs;
 	ddev->mode_config.helper_private = &mode_config_helper_funcs;
 
-	/* Create self-refresh property */
+	/* Create custom properties */
 	tidss->self_refresh_property =
 		drm_property_create_bool(ddev, 0, "SELF_REFRESH");
 	if (!tidss->self_refresh_property) {
 		dev_err(tidss->dev, "Failed to create SELF_REFRESH property\n");
 		return -ENOMEM;
 	}
+
+	tidss->always_on_display_property =
+		drm_property_create_bool(ddev, 0, "ALWAYS_ON_DISPLAY");
+	if (!tidss->always_on_display_property) {
+		dev_err(tidss->dev, "Failed to create ALWAYS_ON_DISPLAY property\n");
+		return -ENOMEM;
+	}
+
 	ret = tidss_dispc_modeset_init(tidss);
 	if (ret)
 		return ret;

@@ -6,9 +6,11 @@
 
 #include <linux/console.h>
 #include <linux/of.h>
+#include <linux/of_platform.h>
 #include <linux/module.h>
 #include <linux/pm_runtime.h>
 #include <linux/pm_domain.h>
+#include <linux/rcupdate.h>
 #include <linux/aperture.h>
 
 #include <drm/clients/drm_client_setup.h>
@@ -74,6 +76,129 @@ void tidss_runtime_put(struct tidss_device *tidss)
 	WARN_ON(r < 0);
 }
 
+static bool tidss_any_vp_always_on(struct tidss_device *tidss)
+{
+	unsigned int i;
+
+	for (i = 0; i < TIDSS_MAX_PORTS; i++)
+		if (tidss->always_on_pd[i])
+			return true;
+	return false;
+}
+
+/* Return the TI DM device ID from the first cell of power-domains phandle */
+static u32 tidss_aod_ti_dev_id(struct device *dev)
+{
+	struct of_phandle_args args;
+	u32 id = 0;
+
+	if (!of_parse_phandle_with_args(dev->of_node, "power-domains",
+					"#power-domain-cells", 0, &args)) {
+		if (args.args_count >= 1)
+			id = args.args[0];
+		of_node_put(args.np);
+	}
+	return id;
+}
+
+/*
+ * Collect bridge + supplier devices for a VP on first AOD enable.
+ * Deferred from probe so that all device links (PHY etc.) exist.
+ */
+static void tidss_aod_collect_bridge_devs(struct tidss_device *tidss,
+					  u32 hw_videoport)
+{
+	struct device_node *np = tidss->aod_bridge_of_node[hw_videoport];
+	struct platform_device *bpdev;
+	struct device_link *dl;
+
+	if (!np)
+		return;
+
+	bpdev = of_find_device_by_node(np);
+	if (!bpdev)
+		return;
+
+	tidss->aod_bridge_devs[hw_videoport][tidss->aod_num_bridge_devs[hw_videoport]++] =
+		&bpdev->dev;
+	dev_dbg(tidss->dev, "vp%u: AOD bridge dev: %s\n",
+		hw_videoport, dev_name(&bpdev->dev));
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(dl, &bpdev->dev.links.suppliers, c_node) {
+		if (tidss->aod_num_bridge_devs[hw_videoport] >=
+		    ARRAY_SIZE(tidss->aod_bridge_devs[hw_videoport]))
+			break;
+		tidss->aod_bridge_devs[hw_videoport][tidss->aod_num_bridge_devs[hw_videoport]++] =
+			get_device(dl->supplier);
+		dev_dbg(tidss->dev, "vp%u: AOD supplier dev: %s\n",
+			hw_videoport, dev_name(dl->supplier));
+	}
+	rcu_read_unlock();
+}
+
+/*
+ * Hold or release PM references and GENPD_FLAG_ALWAYS_ON for the display
+ * pipeline (TIDSS + bridges/PHYs) associated with @hw_videoport.
+ */
+void tidss_aod_set_genpd_always_on(struct tidss_device *tidss,
+				   u32 hw_videoport, bool on)
+{
+	unsigned int i;
+	int ret;
+
+	if (tidss->always_on_pd[hw_videoport] == on)
+		return;
+
+	/* Collect bridge devices on first AOD enable for this VP */
+	if (on && !tidss->aod_bridge_devs_collected[hw_videoport]) {
+		tidss->aod_bridge_devs_collected[hw_videoport] = true;
+		tidss_aod_collect_bridge_devs(tidss, hw_videoport);
+	}
+
+	/* TIDSS PM hold shared across VPs: take on first, release on last */
+	if (on && !tidss_any_vp_always_on(tidss))
+		pm_runtime_get_noresume(tidss->dev);
+
+	tidss->always_on_pd[hw_videoport] = on;
+
+	if (!on && !tidss_any_vp_always_on(tidss))
+		pm_runtime_put_noidle(tidss->dev);
+
+	ret = dev_pm_genpd_set_always_on(tidss->dev, on);
+	dev_dbg(tidss->dev,
+		"always-on-display: TIDSS (TI DM id=%u) rpm_hold -> %s, genpd always-on -> %s%s\n",
+		tidss_aod_ti_dev_id(tidss->dev),
+		on ? "ON" : "OFF",
+		on ? "ON" : "OFF",
+		ret ? " (no genpd)" : "");
+
+	for (i = 0; i < tidss->aod_num_bridge_devs[hw_videoport]; i++) {
+		struct device *d = tidss->aod_bridge_devs[hw_videoport][i];
+		struct device *genpd_dev = d;
+
+		if (on)
+			pm_runtime_get_noresume(d);
+		else
+			pm_runtime_put_noidle(d);
+
+		/* Try parent if device has no genpd (e.g. PHY child device) */
+		ret = dev_pm_genpd_set_always_on(genpd_dev, on);
+		if (ret == -ENODEV && genpd_dev->parent) {
+			genpd_dev = genpd_dev->parent;
+			ret = dev_pm_genpd_set_always_on(genpd_dev, on);
+		}
+
+		dev_dbg(tidss->dev,
+			"always-on-display: vp%u %s (TI DM id=%u) rpm_hold -> %s, genpd always-on -> %s%s%s\n",
+			hw_videoport, dev_name(d), tidss_aod_ti_dev_id(d),
+			on ? "ON" : "OFF",
+			on ? "ON" : "OFF",
+			ret ? " (no genpd)" : "",
+			genpd_dev != d ? " (via parent)" : "");
+	}
+}
+
 static int __maybe_unused tidss_pm_runtime_suspend(struct device *dev)
 {
 	struct tidss_device *tidss = dev_get_drvdata(dev);
@@ -103,6 +228,12 @@ static int __maybe_unused tidss_suspend(struct device *dev)
 
 	dev_dbg(dev, "%s\n", __func__);
 
+	/* Skip suspend when ALWAYS_ON_DISPLAY is active */
+	if (tidss_any_vp_always_on(tidss)) {
+		dev_dbg(dev, "%s: skipped (always_on_pd active)\n", __func__);
+		return 0;
+	}
+
 	return drm_mode_config_helper_suspend(&tidss->ddev);
 }
 
@@ -111,6 +242,12 @@ static int __maybe_unused tidss_resume(struct device *dev)
 	struct tidss_device *tidss = dev_get_drvdata(dev);
 
 	dev_dbg(dev, "%s\n", __func__);
+
+	/* Matching skip for resume when suspend was skipped */
+	if (tidss_any_vp_always_on(tidss)) {
+		dev_dbg(dev, "%s: skipped (always_on_pd active)\n", __func__);
+		return 0;
+	}
 
 	return drm_mode_config_helper_resume(&tidss->ddev);
 }
@@ -375,6 +512,11 @@ static void tidss_remove(struct platform_device *pdev)
 		pm_runtime_dont_use_autosuspend(dev);
 		pm_runtime_disable(dev);
 	}
+
+	/* Release per-VP bridge/PHY device references collected since first always-on-display vp*/
+	for (int vp = 0; vp < TIDSS_MAX_PORTS; vp++)
+		for (int j = 0; j < tidss->aod_num_bridge_devs[vp]; j++)
+			put_device(tidss->aod_bridge_devs[vp][j]);
 
 	tidss_oldi_deinit(tidss);
 

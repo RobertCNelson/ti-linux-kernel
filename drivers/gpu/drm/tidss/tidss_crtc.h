@@ -27,8 +27,10 @@ struct tidss_crtc {
 
 	struct completion framedone_completion;
 
-	/* Self-refresh state snapshot at atomic_flush, indexed by hw_plane_id */
 	bool self_refresh_pending_enable[TIDSS_MAX_PLANES];
+
+	/* Skip vp teardown/re-init on atomic_disable */
+	bool suppress_disable;
 };
 
 #define to_tidss_crtc_state(x) container_of(x, struct tidss_crtc_state, base)
@@ -36,6 +38,8 @@ struct tidss_crtc {
 struct tidss_crtc_state {
 	/* Must be first. */
 	struct drm_crtc_state base;
+
+	bool always_on_display;
 
 	bool plane_pos_changed;
 
