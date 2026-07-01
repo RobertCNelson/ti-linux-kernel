@@ -7,12 +7,17 @@ V4L2_META_FMT_GENERIC_8 ('MET8'), V4L2_META_FMT_GENERIC_CSI2_10 ('MC1A'), V4L2_M
 
 Generic line-based metadata formats
 
+.. _v4l2-format-generic-meta:
 
 Description
 ===========
 
 These generic line-based metadata formats define the memory layout of the data
-without defining the format or meaning of the metadata itself.
+without defining the format or meaning of the metadata itself. These formats may
+only be used with a Media Controller pipeline where the more specific metadata
+layout is reported by an :ref:`V4L2_CID_METADATA_LAYOUT control
+<image_source_control_metadata_layout>` of the source sub-device. See also
+:ref:`source routes <subdev-routing>`.
 
 .. _v4l2-meta-fmt-generic-8:
 
