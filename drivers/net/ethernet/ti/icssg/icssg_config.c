@@ -756,6 +756,16 @@ int icssg_fdb_add_del(struct prueth_emac *emac, const unsigned char *addr,
 	u8 fid = vid;
 	int ret;
 
+	/* Link-local addresses (01:80:c2:00:00:0x) must only be delivered to
+	 * the host port (P0). Clear P1/P2 membership to prevent the firmware
+	 * from forwarding them out of the physical slave ports.
+	 */
+	if (is_link_local_ether_addr(addr)) {
+		fid_c2 |= ICSSG_FDB_ENTRY_P0_MEMBERSHIP;
+		fid_c2 &= ~(ICSSG_FDB_ENTRY_P1_MEMBERSHIP |
+			    ICSSG_FDB_ENTRY_P2_MEMBERSHIP);
+	}
+
 	icssg_fdb_setup(emac, &fdb_cmd, addr, fid, add ? ICSS_CMD_ADD_FDB : ICSS_CMD_DEL_FDB);
 
 	fid_c2 |= ICSSG_FDB_ENTRY_VALID;
