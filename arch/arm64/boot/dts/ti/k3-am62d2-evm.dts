@@ -7,7 +7,6 @@
 
 /dts-v1/;
 
-#include <dt-bindings/clock/ti,cdce6214.h>
 #include <dt-bindings/leds/common.h>
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/net/ti-dp83867.h>
@@ -210,7 +209,8 @@
 
 			master0: cpu {
 				sound-dai = <&mcasp2>;
-				clocks = <&cdce6214 CDCE6214_CLK_OUT1>;
+				/* CDCE6214_CLK_OUT1 */
+				clocks = <&cdce6214 3>;
 			};
 
 			codec@0 {
@@ -225,7 +225,8 @@
 
 			master1: cpu {
 				sound-dai = <&mcasp2>;
-				clocks = <&cdce6214 CDCE6214_CLK_OUT1>;
+				/* CDCE6214_CLK_OUT1 */
+				clocks = <&cdce6214 3>;
 			};
 
 			codec@1 {
@@ -241,7 +242,8 @@
 
 			master2: cpu {
 				sound-dai = <&mcasp2>;
-				clocks = <&cdce6214 CDCE6214_CLK_OUT1>;
+				/* CDCE6214_CLK_OUT1 */
+				clocks = <&cdce6214 3>;
 			};
 
 			codec@2 {
@@ -257,7 +259,8 @@
 
 			master3: cpu {
 				sound-dai = <&mcasp2>;
-				clocks = <&cdce6214 CDCE6214_CLK_OUT1>;
+				/* CDCE6214_CLK_OUT1 */
+				clocks = <&cdce6214 3>;
 			};
 
 			codec@3 {
@@ -273,7 +276,8 @@
 
 			master4: cpu {
 				sound-dai = <&mcasp2>;
-				clocks = <&cdce6214 CDCE6214_CLK_OUT1>;
+				/* CDCE6214_CLK_OUT1 */
+				clocks = <&cdce6214 3>;
 			};
 
 			codec@4 {
@@ -670,13 +674,15 @@
 		clock-names = "secref";
 		pinctrl-names = "default";
 		pinctrl-0 = <&cdce6214_pins>;
-		assigned-clocks = <&cdce6214 CDCE6214_CLK_OUT1>;
+		/* CDCE6214_CLK_OUT1 */
+		assigned-clocks = <&cdce6214 3>;
 		assigned-clock-rates = <24576000>;
 
 		cdce6214_pins: cdce6214-pins {
 			conf-xtal {
 				pins = "secref";
-				ti,io-standard = <CDCE6214_IOSTD_XTAL>;
+				/* CDCE6214_IOSTD_XTAL */
+				ti,io-standard = <4>;
 				ti,xo-cload-femtofarad = <9000>;
 				ti,xo-bias-microampere = <148>;
 			};
