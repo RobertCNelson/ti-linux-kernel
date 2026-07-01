@@ -92,3 +92,9 @@ Image Source Control IDs
     representing a gain of exactly 1.0. For example, if this default value
     is reported as being (say) 128, then a value of 192 would represent
     a gain of exactly 1.5.
+
+``V4L2_CID_METADATA_LAYOUT (integer)``
+    The metadata layout control defines the on-bus metadata layout for metadata
+    streams. The control is used in conjunction with :ref:`generic metadata
+    formats <media-bus-format-generic-meta>` formats to specify the layout of the
+    data.
