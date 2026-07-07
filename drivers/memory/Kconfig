@@ -136,6 +136,16 @@ config TI_EMIF_SRAM
 	  sequence so this driver provides several relocatable PM functions
 	  for the SoC PM code to use.
 
+config TI_K3_FSS_FSAS
+	tristate "TI K3 Flash Subsystem Application Subsystem (FSAS) support"
+	depends on ARCH_K3 || COMPILE_TEST
+	help
+	  Driver for the TI K3 Flash Subsystem Application Subsystem
+	  (FSS_FSAS_GENREGS) wrapper found on K3 related SoCs.
+
+	  This driver takes care of disabling the OSPI XIP prefetch which
+	  causes DMA transfer data corruption.
+
 config FPGA_DFL_EMIF
 	tristate "FPGA DFL EMIF Driver"
 	depends on FPGA_DFL && HAS_IOMEM
