@@ -745,6 +745,10 @@
 	bootph-all;
 };
 
+&fsas0 {
+	status = "okay";
+};
+
 &ospi0 {
 	status = "okay";
 	pinctrl-names = "default";
