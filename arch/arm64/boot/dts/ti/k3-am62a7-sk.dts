@@ -900,6 +900,10 @@
 	status = "okay";
 };
 
+&fsas0 {
+	status = "okay";
+};
+
 &ospi0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&ospi0_pins_default>;
