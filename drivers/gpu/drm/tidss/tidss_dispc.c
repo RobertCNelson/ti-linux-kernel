@@ -1260,9 +1260,10 @@ void dispc_vp_enable(struct dispc_device *dispc, u32 hw_videoport,
 	VP_REG_FLD_MOD(dispc, hw_videoport, DISPC_VP_CONTROL, 1,
 		       DISPC_VP_CONTROL_ENABLE_MASK);
 
-	if (dispc->clk_ctrl) {
-		regmap_update_bits(dispc->clk_ctrl, 0, 0x100, ipc ? 0x100 : 0x000);
-		regmap_update_bits(dispc->clk_ctrl, 0, 0x200, rf ? 0x200 : 0x000);
+	if (dispc->vp_data[hw_videoport].dpi_output && dispc->clk_ctrl) {
+		regmap_write(dispc->clk_ctrl, 0x0,
+			     (!ipc ? DPI0_CLK_CTRL_DATA_CLK_INVDIS : 0) |
+			     (rf ? DPI0_CLK_CTRL_SYNC_CLK_INVDIS : 0));
 	}
 }
 
