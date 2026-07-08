@@ -70,8 +70,6 @@ void tidss_runtime_put(struct tidss_device *tidss)
 	if (tidss->shared_mode)
 		return;
 
-	pm_runtime_mark_last_busy(tidss->dev);
-
 	r = pm_runtime_put_autosuspend(tidss->dev);
 	WARN_ON(r < 0);
 }
