@@ -466,6 +466,8 @@ const struct dispc_features dispc_am62l_feats = {
 
 	.vid_order = {0},
 
+	.has_vp_control_dpienable = true,
+
 	.selfrefresh_fifo_size = 20 * 1024,
 };
 
@@ -1178,6 +1180,11 @@ void dispc_vp_prepare(struct dispc_device *dispc, u32 hw_videoport,
 
 		dispc_enable_am65x_oldi(dispc, hw_videoport, fmt);
 	}
+
+	if (dispc->feat->has_vp_control_dpienable &&
+	    dispc->vp_data[hw_videoport].dpi_output)
+		VP_REG_FLD_MOD(dispc, hw_videoport, DISPC_VP_CONTROL, 1,
+			       DISPC_VP_CONTROL_DPIENABLE_MASK);
 }
 
 void dispc_vp_enable(struct dispc_device *dispc, u32 hw_videoport,
@@ -1257,14 +1264,6 @@ void dispc_vp_enable(struct dispc_device *dispc, u32 hw_videoport,
 		regmap_update_bits(dispc->clk_ctrl, 0, 0x100, ipc ? 0x100 : 0x000);
 		regmap_update_bits(dispc->clk_ctrl, 0, 0x200, rf ? 0x200 : 0x000);
 	}
-
-	/*
-	 * AM62L: Disable DPIENABLE bitfield (bit 6) when DSI bridge is in use.
-	 * The DPI output path is unused in DSI configurations and disabling it
-	 * reduces power consumption.
-	 */
-	if (dispc->feat->subrev == DISPC_AM62L && dispc->tidss->disable_dpi_pipe_block)
-		VP_REG_FLD_MOD(dispc, hw_videoport, DISPC_VP_CONTROL, 0, GENMASK(6, 6));
 }
 
 void dispc_vp_disable(struct dispc_device *dispc, u32 hw_videoport)
@@ -1297,6 +1296,11 @@ void dispc_vp_disable(struct dispc_device *dispc, u32 hw_videoport)
 
 void dispc_vp_unprepare(struct dispc_device *dispc, u32 hw_videoport)
 {
+	if (dispc->feat->has_vp_control_dpienable &&
+	    dispc->vp_data[hw_videoport].dpi_output)
+		VP_REG_FLD_MOD(dispc, hw_videoport, DISPC_VP_CONTROL, 0,
+			       DISPC_VP_CONTROL_DPIENABLE_MASK);
+
 	if (dispc->feat->vp_bus_type[hw_videoport] == DISPC_VP_OLDI_AM65X) {
 		dispc_vp_write(dispc, hw_videoport, DISPC_VP_DSS_OLDI_CFG, 0);
 
@@ -2653,10 +2657,17 @@ static void dispc_vp_init(struct dispc_device *dispc)
 
 	dev_dbg(dispc->dev, "%s()\n", __func__);
 
-	/* Enable the gamma Shadow bit-field for all VPs*/
-	for (i = 0; i < dispc->feat->num_vps; i++)
+	for (i = 0; i < dispc->feat->num_vps; i++) {
+		/* Enable the gamma Shadow bit-field for all VPs*/
 		VP_REG_FLD_MOD(dispc, i, DISPC_VP_CONFIG, 1,
 			       DISPC_VP_CONFIG_GAMMAENABLE_MASK);
+
+		if (dispc->feat->has_vp_control_dpienable) {
+			/* Disable DPIENABLE for all VPs */
+			VP_REG_FLD_MOD(dispc, i, DISPC_VP_CONTROL, 0,
+				       DISPC_VP_CONTROL_DPIENABLE_MASK);
+		}
+	}
 }
 
 static void dispc_initial_config(struct dispc_device *dispc)

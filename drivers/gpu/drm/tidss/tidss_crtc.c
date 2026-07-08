@@ -388,7 +388,7 @@ static void tidss_crtc_atomic_enable(struct drm_crtc *crtc,
 			"%s: VP running (suppress_disable), updating planes + GO\n",
 			__func__);
 		dispc_vp_setup(tidss->dispc, tcrtc->hw_videoport,
-			       crtc->state, false);
+			       crtc->state, false, tcrtc->dpi_output);
 		tidss_crtc_position_planes(tidss, crtc, old_state, true);
 		dispc_vp_go(tidss->dispc, tcrtc->hw_videoport);
 		drm_crtc_vblank_on(crtc);
