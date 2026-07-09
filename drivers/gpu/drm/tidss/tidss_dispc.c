@@ -3278,13 +3278,13 @@ static void dispc_init_errata(struct dispc_device *dispc)
 
 	if (soc_device_match(am65x_sr10_soc_devices)) {
 		dispc->errata.i2000 = true;
-		dev_info(dispc->dev, "WA for erratum i2000: YUV formats disabled\n");
+		dev_dbg(dispc->dev, "WA for erratum i2000: YUV formats disabled\n");
 	}
 
 	if (dispc->feat->subrev != DISPC_K2G) {
 		dispc->errata.i2097 = true;
-		dev_info(dispc->dev,
-			 "WA for erratum i2097: OVR layer disable uses non-visible area\n");
+		dev_dbg(dispc->dev,
+			"WA for erratum i2097: OVR layer disable uses non-visible area\n");
 	}
 }
 
