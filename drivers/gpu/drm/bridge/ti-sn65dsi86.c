@@ -115,6 +115,11 @@
 #define  HPD_REMOVAL_EN				BIT(2)
 #define  HPD_REPLUG_EN				BIT(3)
 
+/* Repeated link training attempts for robust link training */
+#define MODESET_MAX_ATTEMPTS		4
+#define DPCD_STABILITY_CHECKS		3
+#define DPCD_STABILITY_INTERVAL_MS	100
+
 #define SN_AUX_CMD_STATUS_REG			0xF4
 #define  AUX_IRQ_STATUS_AUX_RPLY_TOUT		BIT(3)
 #define  AUX_IRQ_STATUS_AUX_SHORT		BIT(5)
@@ -1129,6 +1134,9 @@ static int ti_sn_bridge_link_train(struct ti_sn65dsi86 *pdata,
 	int dp_rate_idx;
 	unsigned int val;
 	int ret = -EINVAL;
+	bool synced = false;
+	int modeset_attempt;
+	int chk;
 
 	/* DSI_A lane config */
 	val = CHA_DSI_LANES(SN_MAX_DP_LANES - pdata->dsi->lanes);
@@ -1137,9 +1145,6 @@ static int ti_sn_bridge_link_train(struct ti_sn65dsi86 *pdata,
 	regmap_write(pdata->regmap, SN_LN_ASSIGN_REG, pdata->ln_assign);
 	regmap_update_bits(pdata->regmap, SN_ENH_FRAME_REG, LN_POLRS_MASK,
 			   pdata->ln_polrs << LN_POLRS_OFFSET);
-
-	/* set dsi clk frequency value */
-	ti_sn_bridge_set_dsi_rate(pdata, state);
 
 	/*
 	 * The SN65DSI86 only supports ASSR Display Authentication method and
@@ -1171,19 +1176,90 @@ static int ti_sn_bridge_link_train(struct ti_sn65dsi86 *pdata,
 
 	valid_rates = ti_sn_bridge_read_valid_rates(pdata);
 
-	for (dp_rate_idx = ti_sn_bridge_calc_min_dp_rate_idx(pdata, state, bpp);
-	     dp_rate_idx < ARRAY_SIZE(ti_sn_bridge_dp_rate_lut);
-	     dp_rate_idx++) {
-		if (!(valid_rates & BIT(dp_rate_idx)))
+	for (modeset_attempt = 1;
+	     modeset_attempt <= MODESET_MAX_ATTEMPTS;
+	     modeset_attempt++) {
+		u8 sink_st[1];
+
+		if (modeset_attempt > 1) {
+			/*
+			 * Soft reset before retry: disable VSTREAM, take the
+			 * DP link down and disable PLL so as to have a fresh start
+			 */
+			regmap_update_bits(pdata->regmap, SN_ENH_FRAME_REG,
+					   VSTREAM_ENABLE, 0);
+			regmap_write(pdata->regmap, SN_ML_TX_MODE_REG, 0);
+			regmap_write(pdata->regmap, SN_PLL_ENABLE_REG, 0);
+			usleep_range(100000, 101000);
+		}
+
+		/* Link training */
+		ret = -EINVAL;
+		for (dp_rate_idx =
+			ti_sn_bridge_calc_min_dp_rate_idx(pdata, state, bpp);
+		     dp_rate_idx < ARRAY_SIZE(ti_sn_bridge_dp_rate_lut);
+		     dp_rate_idx++) {
+			if (!(valid_rates & BIT(dp_rate_idx)))
+				continue;
+			ret = ti_sn_link_training(pdata, dp_rate_idx,
+						  &last_err_str);
+			if (!ret)
+				break;
+		}
+		if (ret) {
+			DRM_DEV_INFO(pdata->dev,
+				     "link training failed on attempt %d: %s\n",
+				     modeset_attempt, last_err_str);
 			continue;
-		ret = ti_sn_link_training(pdata, dp_rate_idx, &last_err_str);
-		if (!ret)
+		}
+
+		/*
+		 * Set DSI rate after link training so the DSI clock has been
+		 * running continuously for the full training window before the
+		 * bridge is told the expected frequency, giving the DPHY more
+		 * time to settle.
+		 */
+		ti_sn_bridge_set_dsi_rate(pdata, state);
+		ti_sn_bridge_set_video_timings(pdata, state);
+
+		/* Enable video stream */
+		regmap_update_bits(pdata->regmap, SN_ENH_FRAME_REG,
+				   VSTREAM_ENABLE, VSTREAM_ENABLE);
+
+		/*
+		 * Stability check: repeated DPCD 0x205 reads at 100ms
+		 * intervals. Any failure triggers a full retry. All checks
+		 * passing means the monitor accepted the pixel clock.
+		 */
+		usleep_range(200000, 201000);
+
+		synced = true;
+		for (chk = 1; chk <= DPCD_STABILITY_CHECKS; chk++) {
+			if (chk > 1)
+				usleep_range(
+					DPCD_STABILITY_INTERVAL_MS * 1000,
+					DPCD_STABILITY_INTERVAL_MS * 1000 + 1000);
+
+			if (drm_dp_dpcd_read(&pdata->aux,
+					     DP_SINK_STATUS,
+					     sink_st, 1) != 1 ||
+			    !(sink_st[0] & BIT(0))) {
+				synced = false;
+				break;
+			}
+		}
+
+		if (synced)
 			break;
 	}
 
-	if (ret)
-		DRM_DEV_ERROR(pdata->dev, "link training failed: %s\n",
-			      last_err_str);
+	if (!synced) {
+		DRM_DEV_ERROR(pdata->dev,
+			      "monitor did not sync after %d full link-train+VSTREAM attempts: %s\n",
+			      MODESET_MAX_ATTEMPTS, last_err_str);
+		if (!ret)
+			ret = -EIO;
+	}
 
 	return ret;
 }
@@ -1209,13 +1285,8 @@ static void ti_sn_bridge_hpd_work(struct work_struct *work)
 	if (ret || !(hpd_status & HPD_DEBOUNCED_STATE) || !pdata->bridge_enabled)
 		goto notify;
 
-	ret = ti_sn_bridge_link_train(pdata, pdata->cached_bpp, NULL);
-	if (ret)
-		goto notify;
-
-	ti_sn_bridge_set_video_timings(pdata, NULL);
-	regmap_update_bits(pdata->regmap, SN_ENH_FRAME_REG,
-			   VSTREAM_ENABLE, VSTREAM_ENABLE);
+	/* link_train() handles DSI rate, video timings, VSTREAM and retry */
+	ti_sn_bridge_link_train(pdata, pdata->cached_bpp, NULL);
 
 notify:
 	pm_runtime_put_autosuspend(pdata->dev);
@@ -1246,16 +1317,10 @@ static void ti_sn_bridge_atomic_enable(struct drm_bridge *bridge,
 	pdata->dp_lanes = min(pdata->dp_lanes, max_dp_lanes);
 	bpp = ti_sn_bridge_get_bpp(connector);
 
+	/* link_train() handles DSI rate, video timings, VSTREAM and retry */
 	ret = ti_sn_bridge_link_train(pdata, bpp, state);
 	if (ret)
 		return;
-
-	/* config video parameters */
-	ti_sn_bridge_set_video_timings(pdata, state);
-
-	/* enable video stream */
-	regmap_update_bits(pdata->regmap, SN_ENH_FRAME_REG, VSTREAM_ENABLE,
-			   VSTREAM_ENABLE);
 
 	pdata->cached_bpp = bpp;
 	pdata->bridge_enabled = true;
