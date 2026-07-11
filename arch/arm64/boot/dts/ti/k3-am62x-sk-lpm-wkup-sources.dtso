@@ -2,7 +2,8 @@
 /**
  * AM62 family of devices can wakeup from Low Power Modes via
  * multiple wakeup sources. This overlay enables MAIN GPIO, MCU GPIO,
- * and MCU MCAN pins.
+ * and MCU MCAN wakeup. WKUP UART wakeup is disabled and DSS is disabled
+ * in order to allow Main GPIO and MCU GPIO wakeup.
  *
  * Copyright (C) 2023 Texas Instruments Incorporated - http://www.ti.com/
  */
@@ -22,12 +23,30 @@
 		compatible = "gpio-keys";
 		autorepeat;
 		pinctrl-names = "default";
-		pinctrl-0 = <&main_gpio1_pins_default>;
-		switch {
-			label = "WKGPIO";
+		pinctrl-0 = <&main_gpio0_pins_default>,
+			    <&main_gpio1_pins_default>;
+
+		key-gpio0-49 {
+			label = "WKGPIO_GPIO0_49";
+			linux,code = <KEY_WAKEUP>;
+			interrupts-extended = <&main_gpio0 49 IRQ_TYPE_EDGE_RISING>,
+				<&main_pmx0 0x0c8>;
+			interrupt-names = "irq", "wakeup";
+		};
+
+		key-gpio1-10 {
+			label = "WKGPIO_GPIO1_10";
 			linux,code = <KEY_WAKEUP>;
 			interrupts-extended = <&main_gpio1 10 IRQ_TYPE_EDGE_RISING>,
 				<&main_pmx0 0x1a0>;
+			interrupt-names = "irq", "wakeup";
+		};
+
+		key-gpio1-13 {
+			label = "WKGPIO_GPIO1_13";
+			linux,code = <KEY_WAKEUP>;
+			interrupts-extended = <&main_gpio1 13 IRQ_TYPE_EDGE_RISING>,
+				<&main_pmx0 0x1ac>;
 			interrupt-names = "irq", "wakeup";
 		};
 	};
@@ -37,21 +56,38 @@
 			autorepeat;
 		pinctrl-names = "default";
 		pinctrl-0 = <&wake_mcugpio1_pins_default>;
-		interrupt-parent = <&mcu_gpio0>;
-		interrupts = <4 IRQ_TYPE_EDGE_RISING>;
-		switch {
-			label = "MCUGPIO";
+
+		key-mcu-gpio0-4 {
+			label = "MCUGPIO_4";
 			linux,code = <143>;
 			gpios = <&mcu_gpio0 4 GPIO_ACTIVE_LOW>;
+			interrupt-parent = <&mcu_gpio0>;
+			interrupts = <4 IRQ_TYPE_EDGE_RISING>;
+			wakeup-source;
+		};
+
+		key-mcu-gpio0-9 {
+			label = "MCUGPIO_9";
+			linux,code = <143>;
+			interrupt-parent = <&mcu_gpio0>;
+			gpios = <&mcu_gpio0 9 GPIO_ACTIVE_LOW>;
+			interrupts = <9 IRQ_TYPE_EDGE_RISING>;
 			wakeup-source;
 		};
 	};
 };
 
 &main_pmx0 {
+	main_gpio0_pins_default: main-gpio0-pins-default {
+		pinctrl-single,pins = <
+			AM62X_IOPAD(0x0c8, PIN_INPUT_PULLUP, 7) /* (Y25) VOUT0_DATA4.GPIO0_49 */
+		>;
+	};
+
 	main_gpio1_pins_default: main-gpio1-pins-default {
 		pinctrl-single,pins = <
-			AM62X_IOPAD(0x1a0, PIN_INPUT_PULLUP, 7) /* (E18) MCASP0_AXR0.EHRPWM1_B */
+			AM62X_IOPAD(0x1a0, PIN_INPUT_PULLUP, 7) /* (E18) MCASP0_AXR0.GPIO1_10 */
+			AM62X_IOPAD(0x1ac, PIN_INPUT_PULLUP, 7) /* (E19) MCASP0_AFSR.GPIO1_13 */
 		>;
 	};
 };
@@ -60,6 +96,7 @@
 	wake_mcugpio1_pins_default: wake-mcugpio1-pins-default {
 		pinctrl-single,pins = <
 			AM62X_MCU_IOPAD(0x0010, PIN_INPUT, 7) /* (D8) MCU_SPI0_D1.MCU_GPIO0_4 */
+			AM62X_MCU_IOPAD(0x0024, PIN_INPUT, 7) /* (B4) WKUP_UART0_RXD.MCU_GPIO0_9 */
 		>;
 	};
 
@@ -128,4 +165,12 @@
                         <&system_mcu_only>,
                         <&system_standby>;
 	status = "okay";
+};
+
+&{/bus@f0000/bus@b00000/target-module@2b300050} {
+	status = "disabled";
+};
+
+&{/bus@f0000/dss@30200000} {
+	status = "disabled";
 };
