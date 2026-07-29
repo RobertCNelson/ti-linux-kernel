@@ -94,9 +94,6 @@ struct omap2_mcspi_dma {
 	struct dma_chan *dma_tx;
 	struct dma_chan *dma_rx;
 
-	struct completion dma_tx_completion;
-	struct completion dma_rx_completion;
-
 	char dma_rx_ch_name[14];
 	char dma_tx_ch_name[14];
 };
@@ -118,7 +115,7 @@ struct omap2_mcspi_regs {
 };
 
 struct omap2_mcspi {
-	struct completion	txdone;
+	struct completion	txrxdone;
 	struct spi_controller	*ctlr;
 	/* Virtual base address of the controller */
 	void __iomem		*base;
@@ -391,30 +388,6 @@ static int mcspi_wait_for_completion(struct  omap2_mcspi *mcspi,
 	return 0;
 }
 
-static void omap2_mcspi_rx_callback(void *data)
-{
-	struct spi_device *spi = data;
-	struct omap2_mcspi *mcspi = spi_controller_get_devdata(spi->controller);
-	struct omap2_mcspi_dma *mcspi_dma = &mcspi->dma_channels[spi_get_chipselect(spi, 0)];
-
-	/* We must disable the DMA RX request */
-	omap2_mcspi_set_dma_req(spi, 1, 0);
-
-	complete(&mcspi_dma->dma_rx_completion);
-}
-
-static void omap2_mcspi_tx_callback(void *data)
-{
-	struct spi_device *spi = data;
-	struct omap2_mcspi *mcspi = spi_controller_get_devdata(spi->controller);
-	struct omap2_mcspi_dma *mcspi_dma = &mcspi->dma_channels[spi_get_chipselect(spi, 0)];
-
-	/* We must disable the DMA TX request */
-	omap2_mcspi_set_dma_req(spi, 0, 0);
-
-	complete(&mcspi_dma->dma_tx_completion);
-}
-
 static void omap2_mcspi_tx_dma(struct spi_device *spi,
 				struct spi_transfer *xfer,
 				struct dma_slave_config cfg)
@@ -429,12 +402,9 @@ static void omap2_mcspi_tx_dma(struct spi_device *spi,
 	dmaengine_slave_config(mcspi_dma->dma_tx, &cfg);
 
 	tx = dmaengine_prep_slave_sg(mcspi_dma->dma_tx, xfer->tx_sg.sgl,
-				     xfer->tx_sg.nents,
-				     DMA_MEM_TO_DEV,
-				     DMA_PREP_INTERRUPT | DMA_CTRL_ACK);
+				     xfer->tx_sg.nents, DMA_MEM_TO_DEV, DMA_CTRL_ACK);
+
 	if (tx) {
-		tx->callback = omap2_mcspi_tx_callback;
-		tx->callback_param = spi;
 		dmaengine_submit(tx);
 	} else {
 		/* FIXME: fall back to PIO? */
@@ -516,11 +486,9 @@ omap2_mcspi_rx_dma(struct spi_device *spi, struct spi_transfer *xfer,
 	}
 
 	tx = dmaengine_prep_slave_sg(mcspi_dma->dma_rx, sg_out[0],
-				     out_mapped_nents[0], DMA_DEV_TO_MEM,
-				     DMA_PREP_INTERRUPT | DMA_CTRL_ACK);
+				     out_mapped_nents[0], DMA_DEV_TO_MEM, DMA_CTRL_ACK);
+
 	if (tx) {
-		tx->callback = omap2_mcspi_rx_callback;
-		tx->callback_param = spi;
 		dmaengine_submit(tx);
 	} else {
 		/* FIXME: fall back to PIO? */
@@ -529,10 +497,10 @@ omap2_mcspi_rx_dma(struct spi_device *spi, struct spi_transfer *xfer,
 	dma_async_issue_pending(mcspi_dma->dma_rx);
 	omap2_mcspi_set_dma_req(spi, 1, 1);
 
-	ret = mcspi_wait_for_completion(mcspi, &mcspi_dma->dma_rx_completion);
+	ret = mcspi_wait_for_completion(mcspi, &mcspi->txrxdone);
+	omap2_mcspi_set_dma_req(spi, 1, 0);
 	if (ret || mcspi->target_aborted) {
 		dmaengine_terminate_sync(mcspi_dma->dma_rx);
-		omap2_mcspi_set_dma_req(spi, 1, 0);
 		return 0;
 	}
 
@@ -603,8 +571,8 @@ omap2_mcspi_txrx_dma(struct spi_device *spi, struct spi_transfer *xfer)
 	enum dma_slave_buswidth width;
 	unsigned es;
 	void __iomem		*chstat_reg;
-	void __iomem            *irqstat_reg;
 	int			wait_res;
+	int			ret;
 
 	mcspi = spi_controller_get_devdata(spi->controller);
 	mcspi_dma = &mcspi->dma_channels[spi_get_chipselect(spi, 0)];
@@ -634,68 +602,37 @@ omap2_mcspi_txrx_dma(struct spi_device *spi, struct spi_transfer *xfer)
 	tx = xfer->tx_buf;
 
 	mcspi->target_aborted = false;
-	reinit_completion(&mcspi_dma->dma_tx_completion);
-	reinit_completion(&mcspi_dma->dma_rx_completion);
-	reinit_completion(&mcspi->txdone);
-	if (tx) {
-		/* Enable EOW IRQ to know end of tx in target mode */
-		if (spi_controller_is_target(spi->controller))
-			mcspi_write_reg(spi->controller,
-					OMAP2_MCSPI_IRQENABLE,
-					OMAP2_MCSPI_IRQSTATUS_EOW);
+	reinit_completion(&mcspi->txrxdone);
+	mcspi_write_reg(spi->controller, OMAP2_MCSPI_IRQENABLE, OMAP2_MCSPI_IRQSTATUS_EOW);
+	if (tx)
 		omap2_mcspi_tx_dma(spi, xfer, cfg);
-	}
 
-	if (rx != NULL)
+	if (rx)
 		count = omap2_mcspi_rx_dma(spi, xfer, cfg, es);
 
-	if (tx != NULL) {
-		int ret;
+	ret = mcspi_wait_for_completion(mcspi, &mcspi->txrxdone);
+	omap2_mcspi_set_dma_req(spi, 0, 0);
+	if (ret || mcspi->target_aborted)
+		return 0;
 
-		ret = mcspi_wait_for_completion(mcspi, &mcspi_dma->dma_tx_completion);
-		if (ret || mcspi->target_aborted) {
-			dmaengine_terminate_sync(mcspi_dma->dma_tx);
-			omap2_mcspi_set_dma_req(spi, 0, 0);
-			return 0;
-		}
-
-		if (spi_controller_is_target(mcspi->ctlr)) {
-			ret = mcspi_wait_for_completion(mcspi, &mcspi->txdone);
-			if (ret || mcspi->target_aborted)
-				return 0;
-		}
+	/* for TX_ONLY mode, be sure all words have shifted out */
+	if (tx && !rx) {
+		chstat_reg = cs->base + OMAP2_MCSPI_CHSTAT0;
 
 		if (mcspi->fifo_depth > 0) {
-			irqstat_reg = mcspi->base + OMAP2_MCSPI_IRQSTATUS;
-
-			if (mcspi_wait_for_reg_bit(irqstat_reg,
-						OMAP2_MCSPI_IRQSTATUS_EOW) < 0)
-				dev_err(&spi->dev, "EOW timed out\n");
-
-			mcspi_write_reg(mcspi->ctlr, OMAP2_MCSPI_IRQSTATUS,
-					OMAP2_MCSPI_IRQSTATUS_EOW);
+			wait_res = mcspi_wait_for_reg_bit(chstat_reg, OMAP2_MCSPI_CHSTAT_TXFFE);
+			if (wait_res < 0)
+				dev_err(&spi->dev, "TXFFE timed out\n");
+		} else {
+			wait_res = mcspi_wait_for_reg_bit(chstat_reg, OMAP2_MCSPI_CHSTAT_TXS);
+			if (wait_res < 0)
+				dev_err(&spi->dev, "TXS timed out\n");
 		}
-
-		/* for TX_ONLY mode, be sure all words have shifted out */
-		if (rx == NULL) {
-			chstat_reg = cs->base + OMAP2_MCSPI_CHSTAT0;
-			if (mcspi->fifo_depth > 0) {
-				wait_res = mcspi_wait_for_reg_bit(chstat_reg,
-						OMAP2_MCSPI_CHSTAT_TXFFE);
-				if (wait_res < 0)
-					dev_err(&spi->dev, "TXFFE timed out\n");
-			} else {
-				wait_res = mcspi_wait_for_reg_bit(chstat_reg,
-						OMAP2_MCSPI_CHSTAT_TXS);
-				if (wait_res < 0)
-					dev_err(&spi->dev, "TXS timed out\n");
-			}
-			if (wait_res >= 0 &&
-				(mcspi_wait_for_reg_bit(chstat_reg,
-					OMAP2_MCSPI_CHSTAT_EOT) < 0))
-				dev_err(&spi->dev, "EOT timed out\n");
-		}
+		if (wait_res >= 0 && (mcspi_wait_for_reg_bit(chstat_reg,
+							     OMAP2_MCSPI_CHSTAT_EOT) < 0))
+			dev_err(&spi->dev, "EOT timed out\n");
 	}
+
 	return count;
 }
 
@@ -1027,9 +964,6 @@ static int omap2_mcspi_request_dma(struct omap2_mcspi *mcspi,
 		mcspi_dma->dma_rx = NULL;
 	}
 
-	init_completion(&mcspi_dma->dma_rx_completion);
-	init_completion(&mcspi_dma->dma_tx_completion);
-
 no_dma:
 	return ret;
 }
@@ -1136,8 +1070,10 @@ static irqreturn_t omap2_mcspi_irq_handler(int irq, void *data)
 
 	/* Disable IRQ and wakeup target xfer task */
 	mcspi_write_reg(mcspi->ctlr, OMAP2_MCSPI_IRQENABLE, 0);
-	if (irqstat & OMAP2_MCSPI_IRQSTATUS_EOW)
-		complete(&mcspi->txdone);
+	if (irqstat & OMAP2_MCSPI_IRQSTATUS_EOW) {
+		complete_all(&mcspi->txrxdone);
+		mcspi_write_reg(mcspi->ctlr, OMAP2_MCSPI_IRQSTATUS, OMAP2_MCSPI_IRQSTATUS_EOW);
+	}
 
 	return IRQ_HANDLED;
 }
@@ -1145,12 +1081,9 @@ static irqreturn_t omap2_mcspi_irq_handler(int irq, void *data)
 static int omap2_mcspi_target_abort(struct spi_controller *ctlr)
 {
 	struct omap2_mcspi *mcspi = spi_controller_get_devdata(ctlr);
-	struct omap2_mcspi_dma *mcspi_dma = mcspi->dma_channels;
 
 	mcspi->target_aborted = true;
-	complete(&mcspi_dma->dma_rx_completion);
-	complete(&mcspi_dma->dma_tx_completion);
-	complete(&mcspi->txdone);
+	complete_all(&mcspi->txrxdone);
 
 	return 0;
 }
@@ -1576,7 +1509,7 @@ static int omap2_mcspi_probe(struct platform_device *pdev)
 	status = platform_get_irq(pdev, 0);
 	if (status < 0)
 		goto free_ctlr;
-	init_completion(&mcspi->txdone);
+	init_completion(&mcspi->txrxdone);
 	status = devm_request_irq(&pdev->dev, status,
 				  omap2_mcspi_irq_handler, 0, pdev->name,
 				  mcspi);
