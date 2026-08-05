@@ -5,6 +5,8 @@
  * Copyright (C) 2021-2023 CHIPS&MEDIA INC
  */
 
+#include "wave5-vpuconfig.h"
+#include <linux/delay.h>
 #include <linux/pm_runtime.h>
 #include "wave5-helper.h"
 
@@ -1688,9 +1690,28 @@ static void wave5_vpu_dec_stop_streaming(struct vb2_queue *q)
 {
 	struct vpu_instance *inst = vb2_get_drv_priv(q);
 	struct v4l2_m2m_ctx *m2m_ctx = inst->v4l2_fh.m2m_ctx;
+	unsigned long timeout;
 
 	dev_dbg(inst->dev->dev, "%s: type: %u\n", __func__, q->type);
 	pm_runtime_resume_and_get(inst->dev->dev);
+	inst->empty_queue = true;
+
+	timeout = jiffies + msecs_to_jiffies(VPU_DEC_STOP_TIMEOUT);
+	while (true) {
+		struct queue_status_info q_status;
+
+		wave5_vpu_dec_give_command(inst, DEC_GET_QUEUE_STATUS, &q_status);
+		if ((inst->state == VPU_INST_STATE_STOP ||
+		     inst->state == VPU_INST_STATE_INIT_SEQ ||
+		     q_status.instance_queue_count == 0) &&
+			q_status.report_queue_count == 0)
+			break;
+
+		if (time_after(jiffies, timeout))
+			break;
+
+		usleep_range(1000, 2000);
+	}
 
 	v4l2_m2m_update_stop_streaming_state(m2m_ctx, q);
 
@@ -1795,6 +1816,7 @@ static void wave5_vpu_dec_device_run(void *priv)
 	struct queue_status_info q_status;
 	u32 fail_res = 0;
 	int ret = 0;
+	bool cmd_issued = false;
 	unsigned long flags;
 
 	dev_dbg(inst->dev->dev, "%s: Fill the ring buffer with new bitstream data", __func__);
@@ -1899,6 +1921,7 @@ static void wave5_vpu_dec_device_run(void *priv)
 			inst->retry = false;
 			if (!inst->eos)
 				inst->queuing_num--;
+			cmd_issued = true;
 		}
 		break;
 	default:
@@ -1917,8 +1940,16 @@ finish_job_and_return:
 	 * in power and CPU time.
 	 * If EOS is passed, device_run will not call job_finish no more, it is called
 	 * only if HW is idle status in order to reduce overhead.
+	 *
+	 * Deferring job_finish() is only safe when this run actually queued a
+	 * DEC_PIC command (cmd_issued): that guarantees a completion IRQ, and
+	 * thus a later finish_decode(), will release the shared job slot. When
+	 * device_run() is entered with no command to issue (e.g. a job that was
+	 * queued while draining but reached the STOP state by the time it ran),
+	 * no IRQ follows, so finish the job here to avoid leaking the slot and
+	 * stalling every instance sharing the VPU.
 	 */
-	if (!inst->sent_eos)
+	if (!inst->sent_eos || !cmd_issued)
 		v4l2_m2m_job_finish(inst->v4l2_m2m_dev, m2m_ctx);
 }
 
