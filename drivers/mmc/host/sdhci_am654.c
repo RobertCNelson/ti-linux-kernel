@@ -92,6 +92,9 @@
 #define SDHCI_AM654_AUTOSUSPEND_DELAY	-1
 #define RETRY_TUNING_MAX	10
 
+/* HS200 mode OTAP delay used by the J721E SR2.0 silicon revision */
+#define J721E_SR2_HS200_OTAP_DEL	0x8
+
 /* Command Queue Host Controller Interface Base address */
 #define SDHCI_AM654_CQE_BASE_ADDR 0x200
 
@@ -161,6 +164,7 @@ struct sdhci_am654_data {
 #define SDHCI_AM654_QUIRK_SUPPRESS_V1P8_ENA BIT(1)
 #define SDHCI_AM654_QUIRK_DISABLE_HS400 BIT(2)
 #define SDHCI_AM654_QUIRK_DDR52_LIMIT_40MHZ BIT(3)
+#define SDHCI_AM654_QUIRK_ALT_HS200_OTAP BIT(4)
 };
 
 struct window {
@@ -862,6 +866,13 @@ static int sdhci_am654_init(struct sdhci_host *host)
 		host->mmc->caps2 &= ~(MMC_CAP2_HS400 | MMC_CAP2_HS400_ES);
 	}
 
+	if (sdhci_am654->quirks & SDHCI_AM654_QUIRK_ALT_HS200_OTAP &&
+	    host->mmc->caps2 & MMC_CAP2_HS200) {
+		dev_dbg(dev, "Overriding eMMC HS200 OTAP delay to 0x%x for SR2.0\n",
+			J721E_SR2_HS200_OTAP_DEL);
+		sdhci_am654->otap_del_sel[MMC_TIMING_MMC_HS200] = J721E_SR2_HS200_OTAP_DEL;
+	}
+
 	ret = __sdhci_add_host(host);
 	if (ret)
 		goto err_cleanup_host;
@@ -934,6 +945,11 @@ static int sdhci_am654_get_of_property(struct platform_device *pdev,
 static const struct soc_device_attribute sdhci_am654_descope_hs400[] = {
 	{ .family = "AM62PX", .revision = "SR1.0" },
 	{ .family = "AM62PX", .revision = "SR1.1" },
+	{ /* sentinel */ }
+};
+
+static const struct soc_device_attribute sdhci_am654_alt_otap_devices[] = {
+	{ .family = "J721E", .revision = "SR2.0" },
 	{ /* sentinel */ }
 };
 
@@ -1027,6 +1043,10 @@ static int sdhci_am654_probe(struct platform_device *pdev)
 	soc = soc_device_match(sdhci_am654_descope_hs400);
 	if (soc)
 		sdhci_am654->quirks |= SDHCI_AM654_QUIRK_DISABLE_HS400;
+
+	if (drvdata == &sdhci_j721e_8bit_drvdata &&
+	    soc_device_match(sdhci_am654_alt_otap_devices))
+		sdhci_am654->quirks |= SDHCI_AM654_QUIRK_ALT_HS200_OTAP;
 
 	host->mmc_host_ops.start_signal_voltage_switch = sdhci_am654_start_signal_voltage_switch;
 	host->mmc_host_ops.execute_tuning = sdhci_am654_execute_tuning;
