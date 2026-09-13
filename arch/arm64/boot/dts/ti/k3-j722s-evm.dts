@@ -707,7 +707,7 @@
 			/* P05 - USB2.0_MUX_SEL */
 			gpio-hog;
 			gpios = <5 GPIO_ACTIVE_LOW>;
-			output-low;
+			output-high;
 		};
 
 		p01_hog: p01-hog {
