@@ -1892,7 +1892,6 @@ struct sockcm_cookie {
 	u32 ts_opt_id;
 	u32 priority;
 	u32 dmabuf_id;
-	struct skb_redundant_info redinfo;
 };
 
 static inline void sockcm_init(struct sockcm_cookie *sockc,
@@ -2794,22 +2793,6 @@ void __sock_recv_timestamp(struct msghdr *msg, struct sock *sk,
 			   struct sk_buff *skb);
 void __sock_recv_wifi_status(struct msghdr *msg, struct sock *sk,
 			     struct sk_buff *skb);
-void __sock_recv_redinfo_timestamp(struct msghdr *msg, struct sock *sk,
-				   struct sk_buff *skb);
-
-static inline void sock_tx_redundant_info(struct sock *sk,
-					   struct skb_redundant_info *redinfo,
-					   struct sk_buff *skb)
-{
-	*skb_redinfo(skb) = *redinfo;
-}
-
-static inline void sock_recv_redundant_info(struct msghdr *msg,
-					     struct sock *sk,
-					     struct sk_buff *skb)
-{
-	__sock_recv_redinfo_timestamp(msg, sk, skb);
-}
 
 bool skb_has_tx_timestamp(struct sk_buff *skb, const struct sock *sk);
 int skb_get_tx_timestamp(struct sk_buff *skb, struct sock *sk,
