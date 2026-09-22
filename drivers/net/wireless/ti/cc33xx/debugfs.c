@@ -71,7 +71,7 @@ static ssize_t conf_read(struct file *file, char __user *user_buf,
 	size_t len;
 	int ret;
 
-	len = CC33X_CONF_SIZE;
+	len = sizeof(header) + sizeof(wl->conf);
 	buf = kmalloc(len, GFP_KERNEL);
 	if (!buf)
 		return -ENOMEM;
