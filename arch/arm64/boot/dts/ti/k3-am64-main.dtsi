@@ -1694,7 +1694,7 @@
 		reg-names = "ss_cfg";
 		ranges = <0x00 0x00 0x00 0x0f308000 0x00 0x55f8>;
 		interrupts = <GIC_SPI 119 IRQ_TYPE_LEVEL_HIGH>;
-		power-domains = <&k3_pds 138 TI_SCI_PD_EXCLUSIVE>;
+		power-domains = <&k3_pds 138 TI_SCI_PD_SHARED>;
 		clocks = <&k3_clks 138 0>;
 		#address-cells = <2>;
 		#size-cells = <2>;
