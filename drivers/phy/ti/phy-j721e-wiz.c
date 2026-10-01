@@ -1664,6 +1664,9 @@ static int wiz_suspend_noirq(struct device *dev)
        for (i = 0; i < WIZ_MUX_NUM_CLOCKS; i++)
                regmap_field_read(wiz->mux_sel_field[i], &wiz->mux_sel_val[i]);
 
+	if (wiz->type == J721E_WIZ_10G)
+		regmap_field_write(wiz->phy_reset_n, false);
+
        return 0;
 }
 
@@ -1672,6 +1675,9 @@ static int wiz_resume_noirq(struct device *dev)
 	struct device_node *node = dev->of_node;
 	struct wiz *wiz = dev_get_drvdata(dev);
 	int ret, i;
+
+	if (wiz->type == J721E_WIZ_10G)
+		regmap_field_write(wiz->phy_reset_n, true);
 
 	for (i = 0; i < WIZ_MUX_NUM_CLOCKS; i++)
 		regmap_field_write(wiz->mux_sel_field[i], wiz->mux_sel_val[i]);
