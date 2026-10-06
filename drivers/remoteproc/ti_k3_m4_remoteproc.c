@@ -131,6 +131,11 @@ static int k3_m4_rproc_probe(struct platform_device *pdev)
 			return ret;
 	}
 
+	/* Initialize work function for MCU-initiated system shutdown */
+	ret = k3_rproc_init_work(kproc);
+	if (ret)
+		return ret;
+
 	ret = k3_rproc_request_mbox(rproc);
 	if (ret)
 		return ret;
