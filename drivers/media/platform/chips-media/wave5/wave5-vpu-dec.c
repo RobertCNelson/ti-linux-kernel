@@ -1972,9 +1972,12 @@ static void wave5_vpu_dec_job_abort(void *priv)
 {
 	struct vpu_instance *inst = priv;
 	struct v4l2_m2m_ctx *m2m_ctx = inst->v4l2_fh.m2m_ctx;
+	unsigned long flags;
 	int ret;
 
+	spin_lock_irqsave(&inst->state_spinlock, flags);
 	ret = switch_state(inst, VPU_INST_STATE_STOP);
+	spin_unlock_irqrestore(&inst->state_spinlock, flags);
 	if (ret)
 		return;
 
