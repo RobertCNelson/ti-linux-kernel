@@ -866,6 +866,8 @@ struct vpu_instance {
 	int queued_count; /* the number of bitstream buffers queued from the buf_queue */
 	struct mutex feed_lock; /* lock for feeding bitstream buffers */
 	bool empty_queue;
+	unsigned long job_flags; /* bit 0: a device_run() job is ours to finish */
+	struct delayed_work unstall_work; /* releases a stale empty_queue park */
 	struct vpu_buf bitstream_vbuf;
 	dma_addr_t last_rd_ptr;
 	size_t remaining_consumed_bytes;
