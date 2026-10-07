@@ -192,6 +192,7 @@ static void wave5_handle_src_buffer(struct vpu_instance *inst, dma_addr_t rd_ptr
 	dev_dbg(inst->dev->dev, "%s: %zu bytes of bitstream was consumed", __func__,
 		consumed_bytes);
 
+	mutex_lock(&inst->feed_lock);
 	v4l2_m2m_for_each_src_buf_safe(m2m_ctx, buf, n) {
 		struct vb2_v4l2_buffer *src_buf = &buf->vb;
 		size_t src_size = vb2_get_plane_payload(&src_buf->vb2_buf, 0);
@@ -228,6 +229,7 @@ static void wave5_handle_src_buffer(struct vpu_instance *inst, dma_addr_t rd_ptr
 			break;
 		}
 	}
+	mutex_unlock(&inst->feed_lock);
 
 	inst->remaining_consumed_bytes = consumed_bytes;
 }
@@ -241,9 +243,11 @@ static int start_decode(struct vpu_instance *inst, u32 *fail_res)
 	if (ret) {
 		struct vb2_v4l2_buffer *src_buf;
 
+		mutex_lock(&inst->feed_lock);
 		src_buf = v4l2_m2m_src_buf_remove(m2m_ctx);
 		if (src_buf)
 			v4l2_m2m_buf_done(src_buf, VB2_BUF_STATE_ERROR);
+		mutex_unlock(&inst->feed_lock);
 		switch_state(inst, VPU_INST_STATE_STOP);
 
 		dev_dbg(inst->dev->dev, "%s: pic run failed / finish job", __func__);
@@ -1610,7 +1614,6 @@ static int streamoff_output(struct vb2_queue *q)
 		vpu_buf->consumed = false;
 		list_del(&vpu_buf->list);
 	}
-	mutex_unlock(&inst->feed_lock);
 
 	for (i = 0; i < v4l2_m2m_num_dst_bufs_ready(m2m_ctx); i++) {
 		ret = wave5_vpu_dec_set_disp_flag(inst, i);
@@ -1625,6 +1628,7 @@ static int streamoff_output(struct vb2_queue *q)
 			__func__, buf->vb2_buf.type, buf->vb2_buf.index);
 		v4l2_m2m_buf_done(buf, VB2_BUF_STATE_ERROR);
 	}
+	mutex_unlock(&inst->feed_lock);
 
 	while (wave5_vpu_dec_get_output_info(inst, &dec_info) == 0) {
 		if (dec_info.index_frame_display >= 0)
