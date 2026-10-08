@@ -16,6 +16,7 @@
 #include <dt-bindings/thermal/thermal.h>
 #include "k3-am62l3.dtsi"
 #include "k3-pinctrl.h"
+#include "k3-timesync-router.h"
 
 / {
 	compatible = "ti,am62l3-evm", "ti,am62l3";
@@ -721,6 +722,11 @@
 	pinctrl-0 = <&rgmii1_pins_default>,
 		    <&rgmii2_pins_default>;
 	status = "okay";
+
+	/* MAP HW3_TS_PUSH to GENF1 */
+	cpts@3d000 {
+		ti,pps = <2 1>;
+	};
 };
 
 &cpsw_port1 {
@@ -838,4 +844,12 @@
 	       0 0 0 0
 	       0 0 0 0
 	>;
+};
+
+&timesync_router {
+	mux-reg-mask-val = <
+		K3_TS_OFFSET(2, 0xff, 9)
+		>;
+	idle-states = <0x1>;
+	status = "okay";
 };
