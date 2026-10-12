@@ -1312,6 +1312,8 @@ static int wave5_prepare_fb(struct vpu_instance *inst)
 		return ret;
 	}
 
+	inst->needs_reallocation = false;
+
 	/*
 	 * Mark all frame buffers as out of display, to avoid using them before
 	 * the application have them queued.
