@@ -9,6 +9,7 @@
 #define VPUAPI_H_INCLUDED
 
 #include <linux/kfifo.h>
+#include <linux/workqueue.h>
 #include <linux/idr.h>
 #include <linux/genalloc.h>
 #include <linux/devfreq.h>

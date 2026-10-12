@@ -1753,6 +1753,7 @@ static void wave5_vpu_dec_stop_streaming(struct vb2_queue *q)
 	else
 		streamoff_capture(q);
 
+	cancel_delayed_work_sync(&inst->unstall_work);
 	inst->empty_queue = false;
 	inst->sent_eos = false;
 	pm_runtime_put_autosuspend(inst->dev->dev);
@@ -1836,6 +1837,31 @@ static bool wave5_is_draining_or_eos(struct vpu_instance *inst)
 	return m2m_ctx->is_draining || inst->eos;
 }
 
+/*
+ * How long an instance may sit idle with bitstream still buffered before it is
+ * assumed stuck. A normal wait -- including one instance queued behind others on
+ * a shared VPU -- clears in a few milliseconds, so this never fires for it.
+ */
+#define WAVE5_UNSTALL_DELAY_MS 100
+
+static void wave5_vpu_dec_unstall_work(struct work_struct *work)
+{
+	struct vpu_instance *inst = container_of(to_delayed_work(work),
+						 struct vpu_instance, unstall_work);
+
+	/*
+	 * Someone already made progress, or the instance is no longer running a
+	 * picture. Poking the scheduler for an instance that is tearing down
+	 * would queue a job against a context that is about to be freed.
+	 */
+	if (!inst->empty_queue || inst->state != VPU_INST_STATE_PIC_RUN)
+		return;
+
+	dev_dbg(inst->dev->dev, "%s: restarting a stalled instance\n", __func__);
+	inst->empty_queue = false;
+	v4l2_m2m_try_schedule(inst->v4l2_fh.m2m_ctx);
+}
+
 static void wave5_vpu_dec_device_run(void *priv)
 {
 	struct vpu_instance *inst = priv;
@@ -1854,14 +1880,32 @@ static void wave5_vpu_dec_device_run(void *priv)
 		if (ret < 0) {
 			dev_warn(inst->dev->dev, "Filling ring buffer failed\n");
 			goto finish_job_and_return;
-		} else if (!inst->eos &&
-				inst->queuing_num == 0 &&
-				inst->state == VPU_INST_STATE_PIC_RUN) {
+		} else if (!inst->eos && inst->state == VPU_INST_STATE_PIC_RUN) {
+			struct dec_info *dec_info = &inst->codec_info->dec_info;
+			bool ring_has_data;
+
 			wave5_vpu_dec_give_command(inst, DEC_GET_QUEUE_STATUS, &q_status);
-			if (q_status.instance_queue_count == v4l2_m2m_num_src_bufs_ready(m2m_ctx)) {
+			ring_has_data = dec_info->stream_rd_ptr != dec_info->stream_wr_ptr;
+
+			/*
+			 * Nothing new to feed, so stop here and wait -- unless the
+			 * ring still holds bitstream that no queued command will
+			 * consume. Decoding an empty ring, or redoing what an
+			 * in-flight command will take, corrupts the output.
+			 */
+			if (q_status.instance_queue_count || !ring_has_data) {
 				dev_dbg(inst->dev->dev, "%s: no bitstream, skip\n",
 					__func__);
 				inst->empty_queue = true;
+				/*
+				 * Stopping with data left over relies on the
+				 * in-flight command to bring us back. If it ends
+				 * without freeing an OUTPUT buffer, a client that
+				 * holds them all cannot queue one to restart us.
+				 */
+				if (ring_has_data)
+					mod_delayed_work(system_percpu_wq, &inst->unstall_work,
+							 msecs_to_jiffies(WAVE5_UNSTALL_DELAY_MS));
 				goto finish_job_and_return;
 			}
 		}
@@ -2093,6 +2137,7 @@ static int wave5_vpu_open_dec(struct file *filp)
 	mutex_init(&inst->feed_lock);
 	mutex_init(&inst->inst_lock);
 	INIT_LIST_HEAD(&inst->avail_src_bufs);
+	INIT_DELAYED_WORK(&inst->unstall_work, wave5_vpu_dec_unstall_work);
 
 	inst->codec_info = kzalloc(sizeof(*inst->codec_info), GFP_KERNEL);
 	if (!inst->codec_info) {
@@ -2187,6 +2232,15 @@ cleanup_inst:
 
 static int wave5_vpu_dec_release(struct file *filp)
 {
+	struct vpu_instance *inst = file_to_vpu_inst(filp);
+
+	/*
+	 * The unstall timer dereferences both m2m_ctx and inst, which
+	 * wave5_vpu_release_device() frees. stop_streaming() disarms it for a
+	 * streaming instance; make sure nothing is left pending on any other path.
+	 */
+	cancel_delayed_work_sync(&inst->unstall_work);
+
 	return wave5_vpu_release_device(filp, wave5_vpu_dec_close, "decoder");
 }
 
