@@ -1629,6 +1629,18 @@ static int streamoff_output(struct vb2_queue *q)
 	inst->codec_info->dec_info.stream_rd_ptr = new_rd_ptr;
 	inst->codec_info->dec_info.stream_wr_ptr = new_rd_ptr;
 
+	/*
+	 * remaining_consumed_bytes holds the consumed bytes that no source
+	 * buffer has claimed yet. The buffers it belongs to are returned with
+	 * VB2_BUF_STATE_ERROR just above, so the tally has to go with them --
+	 * last_rd_ptr is being rebased for the same reason.
+	 *
+	 * Left behind it is credit against buffers that no longer exist, and
+	 * wave5_handle_src_buffer() spends it on the first buffers queued after
+	 * the seek, completing them before the VPU has read their payload.
+	 */
+	inst->remaining_consumed_bytes = 0;
+
 	if (v4l2_m2m_has_stopped(m2m_ctx)) {
 		unsigned long flags;
 
