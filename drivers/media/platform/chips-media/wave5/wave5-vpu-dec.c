@@ -102,6 +102,28 @@ static const struct vpu_format dec_fmt_list[FMT_TYPES][MAX_FMTS] = {
 	}
 };
 
+/* bit in vpu_instance.job_flags */
+#define WAVE5_JOB_RUNNING	0
+
+/*
+ * Hand the shared job slot back, exactly once per device_run().
+ *
+ * v4l2_m2m_job_finish() only checks that the *context* owns the current job,
+ * not which job it is, so a second finish from the same context clears
+ * m2m_dev->curr_ctx -- and it may do so for the job v4l2_m2m_try_run() has just
+ * put there and is about to hand to device_run(), which then dereferences NULL.
+ *
+ * device_run() and the completion IRQ both reach for this and either may get
+ * there first, so ownership is taken atomically and only the winner calls in.
+ */
+static void wave5_dec_finish_job(struct vpu_instance *inst)
+{
+	if (!test_and_clear_bit(WAVE5_JOB_RUNNING, &inst->job_flags))
+		return;
+
+	v4l2_m2m_job_finish(inst->v4l2_m2m_dev, inst->v4l2_fh.m2m_ctx);
+}
+
 /*
  * Make sure that the state switch is allowed and add logging for debugging
  * purposes
@@ -258,7 +280,7 @@ static int start_decode(struct vpu_instance *inst, u32 *fail_res)
 		set_instance_state(inst, VPU_INST_STATE_STOP);
 
 		dev_dbg(inst->dev->dev, "%s: pic run failed / finish job", __func__);
-		v4l2_m2m_job_finish(inst->v4l2_m2m_dev, m2m_ctx);
+		wave5_dec_finish_job(inst);
 	}
 
 	return ret;
@@ -391,7 +413,7 @@ static void wave5_vpu_dec_finish_decode(struct vpu_instance *inst)
 	ret = wave5_vpu_dec_get_output_info(inst, &dec_info);
 	if (ret) {
 		dev_dbg(inst->dev->dev, "%s: could not get output info.", __func__);
-		v4l2_m2m_job_finish(inst->v4l2_m2m_dev, m2m_ctx);
+		wave5_dec_finish_job(inst);
 		return;
 	}
 
@@ -404,7 +426,7 @@ static void wave5_vpu_dec_finish_decode(struct vpu_instance *inst)
 
 	if (!vb2_is_streaming(dst_vq)) {
 		dev_dbg(inst->dev->dev, "%s: capture is not streaming..", __func__);
-		v4l2_m2m_job_finish(inst->v4l2_m2m_dev, m2m_ctx);
+		wave5_dec_finish_job(inst);
 		return;
 	}
 
@@ -502,13 +524,13 @@ static void wave5_vpu_dec_finish_decode(struct vpu_instance *inst)
 	}
 
 	if (inst->sent_eos &&
-	    v4l2_m2m_get_curr_priv(inst->v4l2_m2m_dev)) {
+	    v4l2_m2m_get_curr_priv(inst->v4l2_m2m_dev) == inst) {
 		struct queue_status_info q_status;
 
 		wave5_vpu_dec_give_command(inst, DEC_GET_QUEUE_STATUS, &q_status);
 		if (q_status.report_queue_count == 0 &&
 		    q_status.instance_queue_count == 0)
-			v4l2_m2m_job_finish(inst->v4l2_m2m_dev, m2m_ctx);
+			wave5_dec_finish_job(inst);
 	}
 
 	if (inst->queuing_fail) {
@@ -1823,6 +1845,8 @@ static void wave5_vpu_dec_device_run(void *priv)
 	int ret = 0;
 	bool cmd_issued = false;
 
+	set_bit(WAVE5_JOB_RUNNING, &inst->job_flags);
+
 	dev_dbg(inst->dev->dev, "%s: Fill the ring buffer with new bitstream data", __func__);
 	pm_runtime_resume_and_get(inst->dev->dev);
 	if (!inst->retry) {
@@ -1947,36 +1971,44 @@ finish_job_and_return:
 	 * stalling every instance sharing the VPU.
 	 */
 	if (!inst->sent_eos || !cmd_issued)
-		v4l2_m2m_job_finish(inst->v4l2_m2m_dev, m2m_ctx);
+		wave5_dec_finish_job(inst);
 }
 
 static void wave5_vpu_dec_job_abort(void *priv)
 {
 	struct vpu_instance *inst = priv;
-	struct v4l2_m2m_ctx *m2m_ctx = inst->v4l2_fh.m2m_ctx;
 	int ret;
 
 	ret = set_instance_state(inst, VPU_INST_STATE_STOP);
-	if (ret)
-		return;
+
+	if (!ret) {
+		/*
+		 * job_abort() runs from the STREAMOFF path and may be called while the
+		 * device is runtime suspended. Setting the EOS flag talks to the
+		 * firmware (send_firmware_command() accesses VPU registers), so the
+		 * device must be resumed first; otherwise the register access faults
+		 * with an asynchronous SError.
+		 */
+		pm_runtime_resume_and_get(inst->dev->dev);
+
+		ret = wave5_vpu_dec_set_eos_on_firmware(inst);
+		if (ret)
+			dev_warn(inst->dev->dev,
+				 "Setting EOS for the bitstream, fail: %d\n", ret);
+
+		pm_runtime_put_autosuspend(inst->dev->dev);
+	}
 
 	/*
-	 * job_abort() runs from the STREAMOFF path and may be called while the
-	 * device is runtime suspended. Setting the EOS flag talks to the
-	 * firmware (send_firmware_command() accesses VPU registers), so the
-	 * device must be resumed first; otherwise the register access faults
-	 * with an asynchronous SError.
+	 * The one caller that must always end the job. v4l2_m2m_cancel_job()
+	 * only gets here while this context owns the running job, and then
+	 * sleeps until TRANS_RUNNING clears -- which only a finish does. Go
+	 * straight past the ownership check: device_run() may not have claimed
+	 * the slot yet, and skipping the finish would leave streamoff waiting
+	 * for a job nobody is going to end.
 	 */
-	pm_runtime_resume_and_get(inst->dev->dev);
-
-	ret = wave5_vpu_dec_set_eos_on_firmware(inst);
-	if (ret)
-		dev_warn(inst->dev->dev,
-			 "Setting EOS for the bitstream, fail: %d\n", ret);
-
-	pm_runtime_put_autosuspend(inst->dev->dev);
-
-	v4l2_m2m_job_finish(inst->v4l2_m2m_dev, m2m_ctx);
+	clear_bit(WAVE5_JOB_RUNNING, &inst->job_flags);
+	v4l2_m2m_job_finish(inst->v4l2_m2m_dev, inst->v4l2_fh.m2m_ctx);
 }
 
 static int wave5_vpu_dec_job_ready(void *priv)
