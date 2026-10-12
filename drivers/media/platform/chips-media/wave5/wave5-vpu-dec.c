@@ -1136,6 +1136,45 @@ static int wave5_vpu_dec_queue_setup(struct vb2_queue *q, unsigned int *num_buff
 	return 0;
 }
 
+/*
+ * Re-establish the display flags from the buffers' own states: the VPU may only
+ * write into a frame buffer the driver owns. Everything else -- above all the
+ * buffers userspace is holding -- has to stay marked.
+ *
+ * Walk the vb2 buffers rather than the m2m ready queue. That list is modified
+ * from the interrupt thread (v4l2_m2m_dst_buf_remove_by_idx() in
+ * finish_decode()) and v4l2_m2m_for_each_dst_buf() takes no lock, so iterating
+ * it here can land on an entry that was just unlinked.
+ */
+static void wave5_dec_sync_disp_flags(struct vpu_instance *inst, bool mark_all)
+{
+	struct v4l2_m2m_ctx *m2m_ctx = inst->v4l2_fh.m2m_ctx;
+	struct vb2_queue *dst_vq = v4l2_m2m_get_dst_vq(m2m_ctx);
+	unsigned int i;
+
+	for (i = 0; i < vb2_get_num_buffers(dst_vq); i++) {
+		struct vb2_buffer *vb = vb2_get_buffer(dst_vq, i);
+		bool driver_owns;
+		int ret;
+
+		if (!vb)
+			continue;
+
+		driver_owns = !mark_all &&
+			      (vb->state == VB2_BUF_STATE_QUEUED ||
+			       vb->state == VB2_BUF_STATE_ACTIVE);
+
+		if (driver_owns)
+			ret = wave5_vpu_dec_clr_disp_flag(inst, vb->index);
+		else
+			ret = wave5_vpu_dec_set_disp_flag(inst, vb->index);
+		if (ret)
+			dev_dbg(inst->dev->dev,
+				"%s: %s display flag of buf index: %u, fail: %d\n",
+				__func__, driver_owns ? "Clearing" : "Setting", i, ret);
+	}
+}
+
 static int wave5_prepare_fb(struct vpu_instance *inst)
 {
 	int linear_num;
@@ -1675,7 +1714,6 @@ static int streamoff_output(struct vb2_queue *q)
 	int ret;
 	dma_addr_t new_rd_ptr;
 	struct dec_output_info dec_info;
-	unsigned int i;
 	struct vpu_src_buffer *vpu_buf, *tmp;
 
 	inst->retry = false;
@@ -1683,14 +1721,6 @@ static int streamoff_output(struct vb2_queue *q)
 	mutex_lock(&inst->feed_lock);
 	list_for_each_entry_safe(vpu_buf, tmp, &inst->avail_src_bufs, list)
 		list_del_init(&vpu_buf->list);
-
-	for (i = 0; i < v4l2_m2m_num_dst_bufs_ready(m2m_ctx); i++) {
-		ret = wave5_vpu_dec_set_disp_flag(inst, i);
-		if (ret)
-			dev_dbg(inst->dev->dev,
-				"%s: Setting display flag of buf index: %u, fail: %d\n",
-				__func__, i, ret);
-	}
 
 	while ((buf = v4l2_m2m_src_buf_remove(m2m_ctx))) {
 		dev_dbg(inst->dev->dev, "%s: (Multiplanar) buf type %4u | index %4u\n",
@@ -1707,6 +1737,20 @@ static int streamoff_output(struct vb2_queue *q)
 	ret = wave5_vpu_flush_instance(inst);
 	if (ret)
 		return ret;
+
+	/*
+	 * The flush clears the display flags, so every frame buffer now looks
+	 * free -- including the ones userspace is still holding. Only the
+	 * buffers that happened to be queued when the flush ran were marked
+	 * again, and userspace clears those as it re-queues them, which leaves
+	 * the ones it kept unmarked: the next pictures are decoded straight
+	 * into buffers the application owns and finish_decode() cannot find
+	 * them in the queue any more.
+	 *
+	 * Mark everything, then hand back just what is queued, the same way
+	 * wave5_prepare_fb() establishes the flags in the first place.
+	 */
+	wave5_dec_sync_disp_flags(inst, false);
 
 	/* Reset the ring buffer information */
 	new_rd_ptr = wave5_vpu_dec_get_rd_ptr(inst);
@@ -1748,16 +1792,15 @@ static int streamoff_capture(struct vb2_queue *q)
 	struct vpu_instance *inst = vb2_get_drv_priv(q);
 	struct v4l2_m2m_ctx *m2m_ctx = inst->v4l2_fh.m2m_ctx;
 	struct vb2_v4l2_buffer *buf;
-	unsigned int i;
 	int ret = 0;
 
-	for (i = 0; i < v4l2_m2m_num_dst_bufs_ready(m2m_ctx); i++) {
-		ret = wave5_vpu_dec_set_disp_flag(inst, i);
-		if (ret)
-			dev_dbg(inst->dev->dev,
-				"%s: Setting display flag of buf index: %u, fail: %d\n",
-				__func__, i, ret);
-	}
+	/*
+	 * Every CAPTURE buffer is about to go back to userspace, so none of them
+	 * may be decoded into until it is queued again. wave5_prepare_fb() only
+	 * re-establishes the flags on the INIT_SEQ -> PIC_RUN transition, which a
+	 * plain streamoff/streamon of this queue does not go through.
+	 */
+	wave5_dec_sync_disp_flags(inst, true);
 
 	while ((buf = v4l2_m2m_dst_buf_remove(m2m_ctx))) {
 		u32 plane;
