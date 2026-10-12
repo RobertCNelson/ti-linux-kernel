@@ -1379,7 +1379,11 @@ static void wave5_vpu_dec_buf_queue_dst(struct vb2_buffer *vb)
 	dma_addr_t addr;
 	int i, ret, act_index = -1;
 
-	pm_runtime_resume_and_get(inst->dev->dev);
+	ret = pm_runtime_resume_and_get(inst->dev->dev);
+	if (ret < 0 ) {
+		v4l2_m2m_buf_done(vbuf, VB2_BUF_STATE_ERROR);
+		return;
+	}
 	addr = vb2_dma_contig_plane_dma_addr(vb, 0);
 
 	if (inst->state == VPU_INST_STATE_PIC_RUN) {
