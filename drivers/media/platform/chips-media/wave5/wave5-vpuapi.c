@@ -78,13 +78,27 @@ int wave5_vpu_flush_instance(struct vpu_instance *inst)
 			return -ETIMEDOUT;
 		} else if (ret == -EBUSY) {
 			struct dec_output_info dec_info;
+			int info_ret;
 
 			mutex_unlock(&inst->dev->hw_lock);
-			wave5_vpu_dec_get_output_info(inst, &dec_info);
+			info_ret = wave5_vpu_dec_get_output_info(inst, &dec_info);
+			if (info_ret) {
+				/*
+				 * A flush is refused while a picture is still
+				 * being decoded, and there is no result to
+				 * collect yet either. Retrying straight away
+				 * spends the whole retry budget in microseconds,
+				 * far less than a large frame takes to decode, so
+				 * the flush times out and streamoff_output() bails
+				 * out before resetting the ring buffer. Give the
+				 * decode time to land instead.
+				 */
+				usleep_range(1000, 2000);
+			}
 			mutex_ret = mutex_lock_interruptible(&inst->dev->hw_lock);
 			if (mutex_ret)
 				return mutex_ret;
-			if (dec_info.index_frame_display >= 0) {
+			if (!info_ret && dec_info.index_frame_display >= 0) {
 				mutex_unlock(&inst->dev->hw_lock);
 				wave5_vpu_dec_set_disp_flag(inst, dec_info.index_frame_display);
 				mutex_ret = mutex_lock_interruptible(&inst->dev->hw_lock);
