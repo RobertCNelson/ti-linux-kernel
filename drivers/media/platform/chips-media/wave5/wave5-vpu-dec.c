@@ -199,6 +199,59 @@ static bool wave5_last_src_buffer_consumed(struct v4l2_m2m_ctx *m2m_ctx)
 	return vpu_buf->consumed;
 }
 
+/*
+ * The decode-order timestamp queue.
+ *
+ * GStreamer carries its frame number in tv_sec of the OUTPUT timestamp and
+ * reads it back off the CAPTURE buffer, so every source buffer's timestamp has
+ * to reach exactly one decoded picture.
+ *
+ * A scalar cannot do that. The VPU accepts more than one picture command at a
+ * time, so a single completion can report a read pointer that has already
+ * passed several access units; wave5_handle_src_buffer() then completes
+ * several source buffers in one call, and all but the last timestamp is
+ * overwritten before any picture is stamped with it. That number never comes
+ * back, and the frame it belongs to is left pending in userspace forever --
+ * observed as GStreamer's "Too old frames, bug in decoder" warning once a
+ * hundred of them have piled up.
+ *
+ * Queue them instead. Picture completions arrive in decode order, which is the
+ * order the source buffers were consumed in.
+ */
+static void wave5_ts_reset(struct vpu_instance *inst)
+{
+	inst->time_stamp.head = 0;
+	inst->time_stamp.tail = 0;
+}
+
+static void wave5_ts_push(struct vpu_instance *inst, u64 ts)
+{
+	int next = (inst->time_stamp.head + 1) % MAX_TIMESTAMP_CIR_BUF;
+
+	/*
+	 * Full means pictures are not being reported for the data we feed, so
+	 * the oldest entry has nothing left to claim it. Drop it rather than
+	 * refuse the new one, which would shift every timestamp from here on.
+	 */
+	if (next == inst->time_stamp.tail)
+		inst->time_stamp.tail = (inst->time_stamp.tail + 1) %
+					MAX_TIMESTAMP_CIR_BUF;
+
+	inst->time_stamp.buf[inst->time_stamp.head] = ts;
+	inst->time_stamp.head = next;
+}
+
+static bool wave5_ts_pop(struct vpu_instance *inst, u64 *ts)
+{
+	if (inst->time_stamp.head == inst->time_stamp.tail)
+		return false;
+
+	*ts = inst->time_stamp.buf[inst->time_stamp.tail];
+	inst->time_stamp.tail = (inst->time_stamp.tail + 1) %
+				MAX_TIMESTAMP_CIR_BUF;
+	return true;
+}
+
 static void wave5_handle_src_buffer(struct vpu_instance *inst, dma_addr_t rd_ptr)
 {
 	struct v4l2_m2m_ctx *m2m_ctx = inst->v4l2_fh.m2m_ctx;
@@ -243,6 +296,7 @@ static void wave5_handle_src_buffer(struct vpu_instance *inst, dma_addr_t rd_ptr
 				inst->time_stamp.head = 0;
 		}
 
+		wave5_ts_push(inst, src_buf->vb2_buf.timestamp);
 		v4l2_m2m_buf_done(src_buf, VB2_BUF_STATE_DONE);
 		consumed_bytes -= src_size;
 
@@ -437,9 +491,18 @@ static void wave5_vpu_dec_finish_decode(struct vpu_instance *inst)
 		struct vb2_buffer *vb = vb2_get_buffer(dst_vq,
 						       dec_info.index_frame_decoded);
 		if (vb) {
+			u64 ts;
+
 			dec_buf = to_vb2_v4l2_buffer(vb);
-			if (inst->cap_io_mode != VB2_MEMORY_DMABUF)
-				dec_buf->vb2_buf.timestamp = inst->timestamp;
+			/*
+			 * Empty means this picture came out of data that was
+			 * already accounted for. Fall back to the last timestamp
+			 * seen rather than leave the buffer unstamped.
+			 */
+			if (!wave5_ts_pop(inst, &ts))
+				ts = inst->timestamp;
+
+			dec_buf->vb2_buf.timestamp = ts;
 		} else {
 			dev_warn(inst->dev->dev, "%s: invalid decoded frame index %i",
 				 __func__, dec_info.index_frame_decoded);
@@ -1662,6 +1725,9 @@ static int streamoff_output(struct vb2_queue *q)
 	 * the seek, completing them before the VPU has read their payload.
 	 */
 	inst->remaining_consumed_bytes = 0;
+
+	/* The queued timestamps belong to those buffers as well. */
+	wave5_ts_reset(inst);
 
 	if (v4l2_m2m_has_stopped(m2m_ctx)) {
 		unsigned long flags;
