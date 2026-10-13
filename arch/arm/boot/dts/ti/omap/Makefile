@@ -178,8 +178,15 @@ dtb-$(CONFIG_SOC_TI81XX) += \
 	dra62x-j5eco-evm.dtb
 
 # Enable support for device-tree overlays
+DTC_FLAGS_am335x-evm += -@
+DTC_FLAGS_am335x-evmsk += -@
+DTC_FLAGS_am335x-icev2 += -@
 DTC_FLAGS_am335x-boneblack += -@
 DTC_FLAGS_am335x-boneblack-wireless += -@
 DTC_FLAGS_am335x-bonegreen += -@
 DTC_FLAGS_am335x-bonegreen-wireless += -@
 DTC_FLAGS_am335x-bonegreen-eco += -@
+DTC_FLAGS_am437x-gp-evm += -@
+DTC_FLAGS_am437x-gp-evm-hdmi += -@
+DTC_FLAGS_am437x-idk-evm += -@
+DTC_FLAGS_am437x-sk-evm += -@
