@@ -409,13 +409,13 @@ static int tidss_probe(struct platform_device *pdev)
 		}
 	}
 
+	check_for_simplefb_device(tidss);
+
 	ret = dispc_init(tidss);
 	if (ret) {
 		dev_err(dev, "failed to initialize dispc: %d\n", ret);
 		goto err_detach_pm_domains;
 	}
-
-	check_for_simplefb_device(tidss);
 
 	ret = tidss_oldi_init(tidss);
 	if (ret) {
@@ -462,6 +462,8 @@ static int tidss_probe(struct platform_device *pdev)
 		dev_err(dev, "failed to register DRM device\n");
 		goto err_irq_uninstall;
 	}
+
+	dispc_splash_fini(tidss->dispc);
 
 	/* Remove possible early fb before setting up the fbdev */
 	ret = aperture_remove_all_conflicting_devices(tidss_driver.name);
