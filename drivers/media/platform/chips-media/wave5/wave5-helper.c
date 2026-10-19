@@ -7,7 +7,10 @@
 
 #include "wave5-helper.h"
 
-#define DEFAULT_BS_SIZE(width, height) ((width) * (height) / 8 * 3)
+/* Smallest bitstream buffer accepted when the client provides a sizeimage */
+#define MIN_BS_SIZE(width, height) ((width) * (height) * 3 / 8)
+/* Worst case: Allocate bitstream buffer size based on resolution and max depth */
+#define DEFAULT_BS_SIZE(width, height) ((width) * (height) * 2)
 
 const char *state_to_str(enum vpu_instance_state state)
 {
@@ -263,8 +266,11 @@ void wave5_update_pix_fmt(struct v4l2_pix_format_mplane *pix_mp,
 		pix_mp->height = height;
 		pix_mp->num_planes = 1;
 		pix_mp->plane_fmt[0].bytesperline = 0;
-		pix_mp->plane_fmt[0].sizeimage = max(DEFAULT_BS_SIZE(width, height),
-						     pix_mp->plane_fmt[0].sizeimage);
+		if (!pix_mp->plane_fmt[0].sizeimage)
+			pix_mp->plane_fmt[0].sizeimage = DEFAULT_BS_SIZE(width, height);
+		else
+			pix_mp->plane_fmt[0].sizeimage = max(MIN_BS_SIZE(width, height),
+							     pix_mp->plane_fmt[0].sizeimage);
 	} else {
 		v4l2_fill_pixfmt_mp(pix_mp, pix_mp->pixelformat, width, height);
 	}
