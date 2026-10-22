@@ -761,7 +761,7 @@ next:
 	nritems = btrfs_header_nritems(leaf);
 
 	while (1) {
-		if (btrfs_fs_closing(fs_info) > 1) {
+		if (btrfs_fs_closing_done(fs_info)) {
 			last = (u64)-1;
 			break;
 		}
@@ -1057,8 +1057,7 @@ static int remove_block_group_item(struct btrfs_trans_handle *trans,
 	if (ret < 0)
 		return ret;
 
-	ret = btrfs_del_item(trans, root, path);
-	return ret;
+	return btrfs_del_item(trans, root, path);
 }
 
 int btrfs_remove_block_group(struct btrfs_trans_handle *trans,

@@ -53,7 +53,6 @@ static void wave5_vpu_handle_irq(void *dev_id)
 	u32 seq_done;
 	u32 cmd_done;
 	u32 irq_reason;
-	u32 irq_subreason;
 	struct vpu_instance *inst, *tmp;
 	struct vpu_device *dev = dev_id;
 	int val;
@@ -62,8 +61,6 @@ static void wave5_vpu_handle_irq(void *dev_id)
 	irq_reason = wave5_vdi_read_register(dev, W5_VPU_VINT_REASON);
 	seq_done = wave5_vdi_read_register(dev, W5_RET_SEQ_DONE_INSTANCE_INFO);
 	cmd_done = wave5_vdi_read_register(dev, W5_RET_QUEUE_CMD_DONE_INST);
-	wave5_vdi_write_register(dev, W5_VPU_VINT_REASON_CLR, irq_reason);
-	wave5_vdi_write_register(dev, W5_VPU_VINT_CLEAR, 0x1);
 
 	spin_lock_irqsave(&dev->irq_spinlock, flags);
 	list_for_each_entry_safe(inst, tmp, &dev->instances, list) {
@@ -88,20 +85,29 @@ static void wave5_vpu_handle_irq(void *dev_id)
 		    irq_reason & BIT(INT_WAVE5_ENC_PIC)) {
 			if (cmd_done & BIT(inst->id)) {
 				cmd_done &= ~BIT(inst->id);
-				if (dev->irq >= 0) {
-					irq_subreason =
-						wave5_vdi_read_register(dev, W5_VPU_VINT_REASON);
-					if (!(irq_subreason & BIT(INT_WAVE5_DEC_PIC)))
-						wave5_vdi_write_register(dev,
-									 W5_RET_QUEUE_CMD_DONE_INST,
-									 cmd_done);
-				}
+				if (dev->irq >= 0)
+					wave5_vdi_write_register(dev,
+								 W5_RET_QUEUE_CMD_DONE_INST,
+								 cmd_done);
 				val = BIT(INT_WAVE5_DEC_PIC);
 				kfifo_in(&inst->irq_status, &val, sizeof(int));
 			}
 		}
 	}
 	spin_unlock_irqrestore(&dev->irq_spinlock, flags);
+
+	/*
+	 * Acknowledge only now that every instance bit this interrupt carried
+	 * has been consumed. W5_RET_QUEUE_CMD_DONE_INST is written by both
+	 * sides, and the VPU refuses to raise the same reason again while
+	 * W5_VPU_VINT_REASON still holds it. Clearing the reason first would
+	 * therefore let the VPU rewrite that register underneath the snapshot
+	 * taken above, and the read-modify-write in the loop would then drop
+	 * the instance bit the VPU had just added -- an instance whose
+	 * completion is never reported again.
+	 */
+	wave5_vdi_write_register(dev, W5_VPU_VINT_REASON_CLR, irq_reason);
+	wave5_vdi_write_register(dev, W5_VPU_VINT_CLEAR, 0x1);
 
 	if (dev->irq < 0)
 		up(&dev->irq_sem);
@@ -399,6 +405,13 @@ static int wave5_vpu_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "failed to get irq resource, falling back to polling\n");
 		sema_init(&dev->irq_sem, 1);
 		dev->irq_thread = kthread_run(irq_thread, dev, "irq thread");
+		if (IS_ERR(dev->irq_thread)) {
+			ret = PTR_ERR(dev->irq_thread);
+			dev_err(&pdev->dev, "failed to create irq thread\n");
+			dev->irq_thread = NULL;
+			goto err_vdi_release;
+		}
+
 		hrtimer_setup(&dev->hrtimer, &wave5_vpu_timer_callback, CLOCK_MONOTONIC,
 			      HRTIMER_MODE_REL_PINNED);
 		dev->worker = kthread_run_worker(0, "vpu_irq_thread");

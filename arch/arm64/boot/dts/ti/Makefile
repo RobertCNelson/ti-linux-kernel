@@ -57,6 +57,7 @@ dtb-$(CONFIG_ARCH_K3) += k3-am62a7-sk-ub954-evm-ov2312.dtb
 
 # Boards with AM62Dx SoC
 dtb-$(CONFIG_ARCH_K3) += k3-am62d2-evm.dtb
+dtb-$(CONFIG_ARCH_K3) += k3-am62d2-evm-dsp-carveout.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62d2-evm-dsp-controlled-audio.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62d-evm-tas67cd-aec.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62l3-evm-ecap-capture.dtbo
@@ -292,6 +293,7 @@ k3-am62a7-sk-csi2-tevi-ov5640-dtbs := k3-am62a7-sk.dtb \
 k3-am62a7-sk-ethfw-dtbs := k3-am62a7-sk.dtb \
 	k3-am62a7-sk-ethfw.dtbo
 k3-am62a7-sk-hdmi-audio-dtbs := k3-am62a7-sk.dtb k3-am62x-sk-hdmi-audio.dtbo
+k3-am62d2-evm-dsp-carveout-dtbs := k3-am62d2-evm.dtb k3-am62d2-evm-dsp-carveout.dtbo
 k3-am62p5-sk-csi2-imx219-dtbs := k3-am62p5-sk.dtb \
 	k3-am62x-sk-csi2-imx219.dtbo
 k3-am62p5-sk-csi2-ov5640-dtbs := k3-am62p5-sk.dtb \
@@ -461,6 +463,7 @@ dtb- += k3-am625-beagleplay-csi2-ov5640.dtb \
 	k3-am62a7-sk-csi2-ov5640.dtb \
 	k3-am62a7-sk-ethfw.dtb \
 	k3-am62a7-sk-hdmi-audio.dtb \
+	k3-am62d2-evm-dsp-carveout.dtb \
 	k3-am62p5-sk-csi2-imx219.dtb \
 	k3-am62p5-sk-csi2-ov5640.dtb \
 	k3-am62p5-sk-csi2-tevi-ov5640.dtb \

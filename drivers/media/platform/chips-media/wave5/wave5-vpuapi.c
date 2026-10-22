@@ -78,13 +78,27 @@ int wave5_vpu_flush_instance(struct vpu_instance *inst)
 			return -ETIMEDOUT;
 		} else if (ret == -EBUSY) {
 			struct dec_output_info dec_info;
+			int info_ret;
 
 			mutex_unlock(&inst->dev->hw_lock);
-			wave5_vpu_dec_get_output_info(inst, &dec_info);
+			info_ret = wave5_vpu_dec_get_output_info(inst, &dec_info);
+			if (info_ret) {
+				/*
+				 * A flush is refused while a picture is still
+				 * being decoded, and there is no result to
+				 * collect yet either. Retrying straight away
+				 * spends the whole retry budget in microseconds,
+				 * far less than a large frame takes to decode, so
+				 * the flush times out and streamoff_output() bails
+				 * out before resetting the ring buffer. Give the
+				 * decode time to land instead.
+				 */
+				usleep_range(1000, 2000);
+			}
 			mutex_ret = mutex_lock_interruptible(&inst->dev->hw_lock);
 			if (mutex_ret)
 				return mutex_ret;
-			if (dec_info.index_frame_display >= 0) {
+			if (!info_ret && dec_info.index_frame_display >= 0) {
 				mutex_unlock(&inst->dev->hw_lock);
 				wave5_vpu_dec_set_disp_flag(inst, dec_info.index_frame_display);
 				mutex_ret = mutex_lock_interruptible(&inst->dev->hw_lock);
@@ -584,8 +598,15 @@ int wave5_vpu_dec_get_output_info(struct vpu_instance *inst, struct dec_output_i
 		p_dec_info->num_of_decoding_fbs : p_dec_info->num_of_display_fbs;
 
 	if (info->index_frame_display >= 0 &&
-	    info->index_frame_display < (int)max_dec_index)
-		info->disp_frame = inst->frame_buf[val + info->index_frame_display];
+	    info->index_frame_display < (int)max_dec_index) {
+		u32 idx = val + info->index_frame_display;
+
+		if (WARN_ON(idx >= MAX_REG_FRAME)) {
+			ret = -EINVAL;
+			goto err_out;
+		}
+		info->disp_frame = inst->frame_buf[idx];
+	}
 
 	info->rd_ptr = p_dec_info->stream_rd_ptr;
 	info->wr_ptr = p_dec_info->stream_wr_ptr;
@@ -747,7 +768,7 @@ int wave5_vpu_enc_close(struct vpu_instance *inst, u32 *fail_res)
 
 	ret = mutex_lock_interruptible(&vpu_dev->hw_lock);
 	if (ret) {
-		pm_runtime_resume_and_get(inst->dev->dev);
+		pm_runtime_put_sync(inst->dev->dev);
 		return ret;
 	}
 
@@ -755,16 +776,13 @@ int wave5_vpu_enc_close(struct vpu_instance *inst, u32 *fail_res)
 		ret = wave5_vpu_enc_finish_seq(inst, fail_res);
 		if (ret < 0 && *fail_res != WAVE5_SYSERR_VPU_STILL_RUNNING) {
 			dev_warn(inst->dev->dev, "enc_finish_seq timed out\n");
-			pm_runtime_resume_and_get(inst->dev->dev);
-			mutex_unlock(&vpu_dev->hw_lock);
-			return ret;
+			goto unlock_and_return;
 		}
 
 		if (*fail_res == WAVE5_SYSERR_VPU_STILL_RUNNING &&
 		    retry++ >= MAX_FIRMWARE_CALL_RETRY) {
-			pm_runtime_resume_and_get(inst->dev->dev);
-			mutex_unlock(&vpu_dev->hw_lock);
-			return -ETIMEDOUT;
+			ret = -ETIMEDOUT;
+			goto unlock_and_return;
 		}
 	} while (ret != 0);
 
@@ -780,10 +798,12 @@ int wave5_vpu_enc_close(struct vpu_instance *inst, u32 *fail_res)
 	}
 
 	wave5_vdi_free_dma_memory(vpu_dev, &p_enc_info->vb_task);
+
+unlock_and_return:
 	mutex_unlock(&vpu_dev->hw_lock);
 	pm_runtime_put_sync(inst->dev->dev);
 
-	return 0;
+	return ret;
 }
 
 int wave5_vpu_enc_register_frame_buffer(struct vpu_instance *inst, unsigned int num,

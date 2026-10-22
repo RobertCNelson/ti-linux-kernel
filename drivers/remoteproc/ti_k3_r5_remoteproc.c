@@ -1198,6 +1198,13 @@ init_rmem:
 			goto out;
 		}
 
+		/* Initialize work function for MCU-initiated system shutdown */
+		ret = k3_rproc_init_work(kproc);
+		if (ret) {
+			dev_err_probe(cdev, ret, "failed to init work\n");
+			goto out;
+		}
+
 		ret = devm_rproc_add(cdev, rproc);
 		if (ret) {
 			dev_err_probe(cdev, ret, "rproc_add failed\n");

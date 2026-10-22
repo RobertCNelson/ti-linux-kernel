@@ -30,6 +30,7 @@
 #include <linux/omap-mailbox.h>
 #include <linux/platform_device.h>
 #include <linux/pm_qos.h>
+#include <linux/reboot.h>
 #include <linux/remoteproc.h>
 #include <linux/reset.h>
 #include <linux/slab.h>
@@ -118,6 +119,10 @@ void k3_rproc_mbox_callback(struct mbox_client *client, void *data)
 		kproc->suspend_status = RP_MBOX_SUSPEND_AUTO;
 		complete(&kproc->suspend_comp);
 		break;
+	case RP_MBOX_SHUTDOWN_SYSTEM:
+		dev_dbg(dev, "Received shutdown system from %s\n", rproc->name);
+		schedule_work(&kproc->system_shutdown_work);
+		break;
 	default:
 		/* silently handle all other valid messages */
 		if (msg >= RP_MBOX_READY && msg < RP_MBOX_END_MSG)
@@ -132,6 +137,32 @@ void k3_rproc_mbox_callback(struct mbox_client *client, void *data)
 	}
 }
 EXPORT_SYMBOL_GPL(k3_rproc_mbox_callback);
+
+void k3_system_shutdown_work_fn(struct work_struct *work)
+{
+	struct k3_rproc *kproc = container_of(work, struct k3_rproc, system_shutdown_work);
+
+	dev_dbg(kproc->dev, "MCU-initiated system shutdown\n");
+
+	/* Trigger systemd shutdown sequence */
+	orderly_poweroff(true);
+}
+EXPORT_SYMBOL_GPL(k3_system_shutdown_work_fn);
+
+static void k3_cancel_work(void *data)
+{
+	struct k3_rproc *kproc = data;
+
+	cancel_work_sync(&kproc->system_shutdown_work);
+}
+
+int k3_rproc_init_work(struct k3_rproc *kproc)
+{
+	INIT_WORK(&kproc->system_shutdown_work, k3_system_shutdown_work_fn);
+
+	return devm_add_action_or_reset(kproc->dev, k3_cancel_work, kproc);
+}
+EXPORT_SYMBOL_GPL(k3_rproc_init_work);
 
 /*
  * Kick the remote processor to notify about pending unprocessed messages.

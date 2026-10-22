@@ -1103,6 +1103,8 @@ err_unregister:
 	hsr_del_ports(hsr, hsr_dev);
 err_add_master:
 	hsr_del_self_node(hsr);
+	hsr_del_nodes(&hsr->node_db);
+	hsr_del_nodes(&hsr->proxy_node_db);
 err_add_slaves:
 	if (unregister)
 		unregister_netdevice(hsr_dev);

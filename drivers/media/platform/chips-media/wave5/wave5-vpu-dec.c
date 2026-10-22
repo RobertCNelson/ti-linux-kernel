@@ -102,6 +102,28 @@ static const struct vpu_format dec_fmt_list[FMT_TYPES][MAX_FMTS] = {
 	}
 };
 
+/* bit in vpu_instance.job_flags */
+#define WAVE5_JOB_RUNNING	0
+
+/*
+ * Hand the shared job slot back, exactly once per device_run().
+ *
+ * v4l2_m2m_job_finish() only checks that the *context* owns the current job,
+ * not which job it is, so a second finish from the same context clears
+ * m2m_dev->curr_ctx -- and it may do so for the job v4l2_m2m_try_run() has just
+ * put there and is about to hand to device_run(), which then dereferences NULL.
+ *
+ * device_run() and the completion IRQ both reach for this and either may get
+ * there first, so ownership is taken atomically and only the winner calls in.
+ */
+static void wave5_dec_finish_job(struct vpu_instance *inst)
+{
+	if (!test_and_clear_bit(WAVE5_JOB_RUNNING, &inst->job_flags))
+		return;
+
+	v4l2_m2m_job_finish(inst->v4l2_m2m_dev, inst->v4l2_fh.m2m_ctx);
+}
+
 /*
  * Make sure that the state switch is allowed and add logging for debugging
  * purposes
@@ -177,6 +199,59 @@ static bool wave5_last_src_buffer_consumed(struct v4l2_m2m_ctx *m2m_ctx)
 	return vpu_buf->consumed;
 }
 
+/*
+ * The decode-order timestamp queue.
+ *
+ * GStreamer carries its frame number in tv_sec of the OUTPUT timestamp and
+ * reads it back off the CAPTURE buffer, so every source buffer's timestamp has
+ * to reach exactly one decoded picture.
+ *
+ * A scalar cannot do that. The VPU accepts more than one picture command at a
+ * time, so a single completion can report a read pointer that has already
+ * passed several access units; wave5_handle_src_buffer() then completes
+ * several source buffers in one call, and all but the last timestamp is
+ * overwritten before any picture is stamped with it. That number never comes
+ * back, and the frame it belongs to is left pending in userspace forever --
+ * observed as GStreamer's "Too old frames, bug in decoder" warning once a
+ * hundred of them have piled up.
+ *
+ * Queue them instead. Picture completions arrive in decode order, which is the
+ * order the source buffers were consumed in.
+ */
+static void wave5_ts_reset(struct vpu_instance *inst)
+{
+	inst->time_stamp.head = 0;
+	inst->time_stamp.tail = 0;
+}
+
+static void wave5_ts_push(struct vpu_instance *inst, u64 ts)
+{
+	int next = (inst->time_stamp.head + 1) % MAX_TIMESTAMP_CIR_BUF;
+
+	/*
+	 * Full means pictures are not being reported for the data we feed, so
+	 * the oldest entry has nothing left to claim it. Drop it rather than
+	 * refuse the new one, which would shift every timestamp from here on.
+	 */
+	if (next == inst->time_stamp.tail)
+		inst->time_stamp.tail = (inst->time_stamp.tail + 1) %
+					MAX_TIMESTAMP_CIR_BUF;
+
+	inst->time_stamp.buf[inst->time_stamp.head] = ts;
+	inst->time_stamp.head = next;
+}
+
+static bool wave5_ts_pop(struct vpu_instance *inst, u64 *ts)
+{
+	if (inst->time_stamp.head == inst->time_stamp.tail)
+		return false;
+
+	*ts = inst->time_stamp.buf[inst->time_stamp.tail];
+	inst->time_stamp.tail = (inst->time_stamp.tail + 1) %
+				MAX_TIMESTAMP_CIR_BUF;
+	return true;
+}
+
 static void wave5_handle_src_buffer(struct vpu_instance *inst, dma_addr_t rd_ptr)
 {
 	struct v4l2_m2m_ctx *m2m_ctx = inst->v4l2_fh.m2m_ctx;
@@ -199,6 +274,7 @@ static void wave5_handle_src_buffer(struct vpu_instance *inst, dma_addr_t rd_ptr
 	dev_dbg(inst->dev->dev, "%s: %zu bytes of bitstream was consumed", __func__,
 		consumed_bytes);
 
+	mutex_lock(&inst->feed_lock);
 	v4l2_m2m_for_each_src_buf_safe(m2m_ctx, buf, n) {
 		struct vb2_v4l2_buffer *src_buf = &buf->vb;
 		size_t src_size = vb2_get_plane_payload(&src_buf->vb2_buf, 0);
@@ -220,6 +296,7 @@ static void wave5_handle_src_buffer(struct vpu_instance *inst, dma_addr_t rd_ptr
 				inst->time_stamp.head = 0;
 		}
 
+		wave5_ts_push(inst, src_buf->vb2_buf.timestamp);
 		v4l2_m2m_buf_done(src_buf, VB2_BUF_STATE_DONE);
 		consumed_bytes -= src_size;
 
@@ -235,6 +312,7 @@ static void wave5_handle_src_buffer(struct vpu_instance *inst, dma_addr_t rd_ptr
 			break;
 		}
 	}
+	mutex_unlock(&inst->feed_lock);
 
 	inst->remaining_consumed_bytes = consumed_bytes;
 }
@@ -248,13 +326,15 @@ static int start_decode(struct vpu_instance *inst, u32 *fail_res)
 	if (ret) {
 		struct vb2_v4l2_buffer *src_buf;
 
+		mutex_lock(&inst->feed_lock);
 		src_buf = v4l2_m2m_src_buf_remove(m2m_ctx);
 		if (src_buf)
 			v4l2_m2m_buf_done(src_buf, VB2_BUF_STATE_ERROR);
+		mutex_unlock(&inst->feed_lock);
 		set_instance_state(inst, VPU_INST_STATE_STOP);
 
 		dev_dbg(inst->dev->dev, "%s: pic run failed / finish job", __func__);
-		v4l2_m2m_job_finish(inst->v4l2_m2m_dev, m2m_ctx);
+		wave5_dec_finish_job(inst);
 	}
 
 	return ret;
@@ -309,7 +389,6 @@ static void wave5_update_min_bufs_ctrl(struct vpu_instance *inst, u32 fbc_buf_co
 	if (ctrl)
 		v4l2_ctrl_s_ctrl(ctrl, fbc_buf_count);
 }
-
 
 static int handle_dynamic_resolution_change(struct vpu_instance *inst)
 {
@@ -387,7 +466,7 @@ static void wave5_vpu_dec_finish_decode(struct vpu_instance *inst)
 	ret = wave5_vpu_dec_get_output_info(inst, &dec_info);
 	if (ret) {
 		dev_dbg(inst->dev->dev, "%s: could not get output info.", __func__);
-		v4l2_m2m_job_finish(inst->v4l2_m2m_dev, m2m_ctx);
+		wave5_dec_finish_job(inst);
 		return;
 	}
 
@@ -400,7 +479,7 @@ static void wave5_vpu_dec_finish_decode(struct vpu_instance *inst)
 
 	if (!vb2_is_streaming(dst_vq)) {
 		dev_dbg(inst->dev->dev, "%s: capture is not streaming..", __func__);
-		v4l2_m2m_job_finish(inst->v4l2_m2m_dev, m2m_ctx);
+		wave5_dec_finish_job(inst);
 		return;
 	}
 
@@ -411,9 +490,18 @@ static void wave5_vpu_dec_finish_decode(struct vpu_instance *inst)
 		struct vb2_buffer *vb = vb2_get_buffer(dst_vq,
 						       dec_info.index_frame_decoded);
 		if (vb) {
+			u64 ts;
+
 			dec_buf = to_vb2_v4l2_buffer(vb);
-			if (inst->cap_io_mode != VB2_MEMORY_DMABUF)
-				dec_buf->vb2_buf.timestamp = inst->timestamp;
+			/*
+			 * Empty means this picture came out of data that was
+			 * already accounted for. Fall back to the last timestamp
+			 * seen rather than leave the buffer unstamped.
+			 */
+			if (!wave5_ts_pop(inst, &ts))
+				ts = inst->timestamp;
+
+			dec_buf->vb2_buf.timestamp = ts;
 		} else {
 			dev_warn(inst->dev->dev, "%s: invalid decoded frame index %i",
 				 __func__, dec_info.index_frame_decoded);
@@ -498,13 +586,13 @@ static void wave5_vpu_dec_finish_decode(struct vpu_instance *inst)
 	}
 
 	if (inst->sent_eos &&
-	    v4l2_m2m_get_curr_priv(inst->v4l2_m2m_dev)) {
+	    v4l2_m2m_get_curr_priv(inst->v4l2_m2m_dev) == inst) {
 		struct queue_status_info q_status;
 
 		wave5_vpu_dec_give_command(inst, DEC_GET_QUEUE_STATUS, &q_status);
 		if (q_status.report_queue_count == 0 &&
 		    q_status.instance_queue_count == 0)
-			v4l2_m2m_job_finish(inst->v4l2_m2m_dev, m2m_ctx);
+			wave5_dec_finish_job(inst);
 	}
 
 	if (inst->queuing_fail) {
@@ -1047,6 +1135,45 @@ static int wave5_vpu_dec_queue_setup(struct vb2_queue *q, unsigned int *num_buff
 	return 0;
 }
 
+/*
+ * Re-establish the display flags from the buffers' own states: the VPU may only
+ * write into a frame buffer the driver owns. Everything else -- above all the
+ * buffers userspace is holding -- has to stay marked.
+ *
+ * Walk the vb2 buffers rather than the m2m ready queue. That list is modified
+ * from the interrupt thread (v4l2_m2m_dst_buf_remove_by_idx() in
+ * finish_decode()) and v4l2_m2m_for_each_dst_buf() takes no lock, so iterating
+ * it here can land on an entry that was just unlinked.
+ */
+static void wave5_dec_sync_disp_flags(struct vpu_instance *inst, bool mark_all)
+{
+	struct v4l2_m2m_ctx *m2m_ctx = inst->v4l2_fh.m2m_ctx;
+	struct vb2_queue *dst_vq = v4l2_m2m_get_dst_vq(m2m_ctx);
+	unsigned int i;
+
+	for (i = 0; i < vb2_get_num_buffers(dst_vq); i++) {
+		struct vb2_buffer *vb = vb2_get_buffer(dst_vq, i);
+		bool driver_owns;
+		int ret;
+
+		if (!vb)
+			continue;
+
+		driver_owns = !mark_all &&
+			      (vb->state == VB2_BUF_STATE_QUEUED ||
+			       vb->state == VB2_BUF_STATE_ACTIVE);
+
+		if (driver_owns)
+			ret = wave5_vpu_dec_clr_disp_flag(inst, vb->index);
+		else
+			ret = wave5_vpu_dec_set_disp_flag(inst, vb->index);
+		if (ret)
+			dev_dbg(inst->dev->dev,
+				"%s: %s display flag of buf index: %u, fail: %d\n",
+				__func__, driver_owns ? "Clearing" : "Setting", i, ret);
+	}
+}
+
 static int wave5_prepare_fb(struct vpu_instance *inst)
 {
 	int linear_num;
@@ -1183,6 +1310,8 @@ static int wave5_prepare_fb(struct vpu_instance *inst)
 			__func__, ret);
 		return ret;
 	}
+
+	inst->needs_reallocation = false;
 
 	/*
 	 * Mark all frame buffers as out of display, to avoid using them before
@@ -1379,7 +1508,11 @@ static void wave5_vpu_dec_buf_queue_dst(struct vb2_buffer *vb)
 	dma_addr_t addr;
 	int i, ret, act_index = -1;
 
-	pm_runtime_resume_and_get(inst->dev->dev);
+	ret = pm_runtime_resume_and_get(inst->dev->dev);
+	if (ret < 0 ) {
+		v4l2_m2m_buf_done(vbuf, VB2_BUF_STATE_ERROR);
+		return;
+	}
 	addr = vb2_dma_contig_plane_dma_addr(vb, 0);
 
 	if (inst->state == VPU_INST_STATE_PIC_RUN) {
@@ -1582,27 +1715,20 @@ static int streamoff_output(struct vb2_queue *q)
 	int ret;
 	dma_addr_t new_rd_ptr;
 	struct dec_output_info dec_info;
-	unsigned int i;
-	struct vpu_src_buffer *vpu_buf;
+	struct vpu_src_buffer *vpu_buf, *tmp;
 
 	inst->retry = false;
 	inst->queuing_num = 0;
-	while ((vpu_buf = inst_src_buf_remove(inst)) != NULL)
-		;
-
-	for (i = 0; i < v4l2_m2m_num_dst_bufs_ready(m2m_ctx); i++) {
-		ret = wave5_vpu_dec_set_disp_flag(inst, i);
-		if (ret)
-			dev_dbg(inst->dev->dev,
-				"%s: Setting display flag of buf index: %u, fail: %d\n",
-				__func__, i, ret);
-	}
+	mutex_lock(&inst->feed_lock);
+	list_for_each_entry_safe(vpu_buf, tmp, &inst->avail_src_bufs, list)
+		list_del_init(&vpu_buf->list);
 
 	while ((buf = v4l2_m2m_src_buf_remove(m2m_ctx))) {
 		dev_dbg(inst->dev->dev, "%s: (Multiplanar) buf type %4u | index %4u\n",
 			__func__, buf->vb2_buf.type, buf->vb2_buf.index);
 		v4l2_m2m_buf_done(buf, VB2_BUF_STATE_ERROR);
 	}
+	mutex_unlock(&inst->feed_lock);
 
 	while (wave5_vpu_dec_get_output_info(inst, &dec_info) == 0) {
 		if (dec_info.index_frame_display >= 0)
@@ -1613,11 +1739,40 @@ static int streamoff_output(struct vb2_queue *q)
 	if (ret)
 		return ret;
 
+	/*
+	 * The flush clears the display flags, so every frame buffer now looks
+	 * free -- including the ones userspace is still holding. Only the
+	 * buffers that happened to be queued when the flush ran were marked
+	 * again, and userspace clears those as it re-queues them, which leaves
+	 * the ones it kept unmarked: the next pictures are decoded straight
+	 * into buffers the application owns and finish_decode() cannot find
+	 * them in the queue any more.
+	 *
+	 * Mark everything, then hand back just what is queued, the same way
+	 * wave5_prepare_fb() establishes the flags in the first place.
+	 */
+	wave5_dec_sync_disp_flags(inst, false);
+
 	/* Reset the ring buffer information */
 	new_rd_ptr = wave5_vpu_dec_get_rd_ptr(inst);
 	inst->last_rd_ptr = new_rd_ptr;
 	inst->codec_info->dec_info.stream_rd_ptr = new_rd_ptr;
 	inst->codec_info->dec_info.stream_wr_ptr = new_rd_ptr;
+
+	/*
+	 * remaining_consumed_bytes holds the consumed bytes that no source
+	 * buffer has claimed yet. The buffers it belongs to are returned with
+	 * VB2_BUF_STATE_ERROR just above, so the tally has to go with them --
+	 * last_rd_ptr is being rebased for the same reason.
+	 *
+	 * Left behind it is credit against buffers that no longer exist, and
+	 * wave5_handle_src_buffer() spends it on the first buffers queued after
+	 * the seek, completing them before the VPU has read their payload.
+	 */
+	inst->remaining_consumed_bytes = 0;
+
+	/* The queued timestamps belong to those buffers as well. */
+	wave5_ts_reset(inst);
 
 	if (v4l2_m2m_has_stopped(m2m_ctx)) {
 		unsigned long flags;
@@ -1638,16 +1793,15 @@ static int streamoff_capture(struct vb2_queue *q)
 	struct vpu_instance *inst = vb2_get_drv_priv(q);
 	struct v4l2_m2m_ctx *m2m_ctx = inst->v4l2_fh.m2m_ctx;
 	struct vb2_v4l2_buffer *buf;
-	unsigned int i;
 	int ret = 0;
 
-	for (i = 0; i < v4l2_m2m_num_dst_bufs_ready(m2m_ctx); i++) {
-		ret = wave5_vpu_dec_set_disp_flag(inst, i);
-		if (ret)
-			dev_dbg(inst->dev->dev,
-				"%s: Setting display flag of buf index: %u, fail: %d\n",
-				__func__, i, ret);
-	}
+	/*
+	 * Every CAPTURE buffer is about to go back to userspace, so none of them
+	 * may be decoded into until it is queued again. wave5_prepare_fb() only
+	 * re-establishes the flags on the INIT_SEQ -> PIC_RUN transition, which a
+	 * plain streamoff/streamon of this queue does not go through.
+	 */
+	wave5_dec_sync_disp_flags(inst, true);
 
 	while ((buf = v4l2_m2m_dst_buf_remove(m2m_ctx))) {
 		u32 plane;
@@ -1709,6 +1863,7 @@ static void wave5_vpu_dec_stop_streaming(struct vb2_queue *q)
 	else
 		streamoff_capture(q);
 
+	cancel_delayed_work_sync(&inst->unstall_work);
 	inst->empty_queue = false;
 	inst->sent_eos = false;
 	pm_runtime_put_autosuspend(inst->dev->dev);
@@ -1792,6 +1947,31 @@ static bool wave5_is_draining_or_eos(struct vpu_instance *inst)
 	return m2m_ctx->is_draining || inst->eos;
 }
 
+/*
+ * How long an instance may sit idle with bitstream still buffered before it is
+ * assumed stuck. A normal wait -- including one instance queued behind others on
+ * a shared VPU -- clears in a few milliseconds, so this never fires for it.
+ */
+#define WAVE5_UNSTALL_DELAY_MS 100
+
+static void wave5_vpu_dec_unstall_work(struct work_struct *work)
+{
+	struct vpu_instance *inst = container_of(to_delayed_work(work),
+						 struct vpu_instance, unstall_work);
+
+	/*
+	 * Someone already made progress, or the instance is no longer running a
+	 * picture. Poking the scheduler for an instance that is tearing down
+	 * would queue a job against a context that is about to be freed.
+	 */
+	if (!inst->empty_queue || inst->state != VPU_INST_STATE_PIC_RUN)
+		return;
+
+	dev_dbg(inst->dev->dev, "%s: restarting a stalled instance\n", __func__);
+	inst->empty_queue = false;
+	v4l2_m2m_try_schedule(inst->v4l2_fh.m2m_ctx);
+}
+
 static void wave5_vpu_dec_device_run(void *priv)
 {
 	struct vpu_instance *inst = priv;
@@ -1801,6 +1981,8 @@ static void wave5_vpu_dec_device_run(void *priv)
 	int ret = 0;
 	bool cmd_issued = false;
 
+	set_bit(WAVE5_JOB_RUNNING, &inst->job_flags);
+
 	dev_dbg(inst->dev->dev, "%s: Fill the ring buffer with new bitstream data", __func__);
 	pm_runtime_resume_and_get(inst->dev->dev);
 	if (!inst->retry) {
@@ -1808,14 +1990,32 @@ static void wave5_vpu_dec_device_run(void *priv)
 		if (ret < 0) {
 			dev_warn(inst->dev->dev, "Filling ring buffer failed\n");
 			goto finish_job_and_return;
-		} else if (!inst->eos &&
-				inst->queuing_num == 0 &&
-				inst->state == VPU_INST_STATE_PIC_RUN) {
+		} else if (!inst->eos && inst->state == VPU_INST_STATE_PIC_RUN) {
+			struct dec_info *dec_info = &inst->codec_info->dec_info;
+			bool ring_has_data;
+
 			wave5_vpu_dec_give_command(inst, DEC_GET_QUEUE_STATUS, &q_status);
-			if (q_status.instance_queue_count == v4l2_m2m_num_src_bufs_ready(m2m_ctx)) {
+			ring_has_data = dec_info->stream_rd_ptr != dec_info->stream_wr_ptr;
+
+			/*
+			 * Nothing new to feed, so stop here and wait -- unless the
+			 * ring still holds bitstream that no queued command will
+			 * consume. Decoding an empty ring, or redoing what an
+			 * in-flight command will take, corrupts the output.
+			 */
+			if (q_status.instance_queue_count || !ring_has_data) {
 				dev_dbg(inst->dev->dev, "%s: no bitstream, skip\n",
 					__func__);
 				inst->empty_queue = true;
+				/*
+				 * Stopping with data left over relies on the
+				 * in-flight command to bring us back. If it ends
+				 * without freeing an OUTPUT buffer, a client that
+				 * holds them all cannot queue one to restart us.
+				 */
+				if (ring_has_data)
+					mod_delayed_work(system_percpu_wq, &inst->unstall_work,
+							 msecs_to_jiffies(WAVE5_UNSTALL_DELAY_MS));
 				goto finish_job_and_return;
 			}
 		}
@@ -1925,36 +2125,44 @@ finish_job_and_return:
 	 * stalling every instance sharing the VPU.
 	 */
 	if (!inst->sent_eos || !cmd_issued)
-		v4l2_m2m_job_finish(inst->v4l2_m2m_dev, m2m_ctx);
+		wave5_dec_finish_job(inst);
 }
 
 static void wave5_vpu_dec_job_abort(void *priv)
 {
 	struct vpu_instance *inst = priv;
-	struct v4l2_m2m_ctx *m2m_ctx = inst->v4l2_fh.m2m_ctx;
 	int ret;
 
 	ret = set_instance_state(inst, VPU_INST_STATE_STOP);
-	if (ret)
-		return;
+
+	if (!ret) {
+		/*
+		 * job_abort() runs from the STREAMOFF path and may be called while the
+		 * device is runtime suspended. Setting the EOS flag talks to the
+		 * firmware (send_firmware_command() accesses VPU registers), so the
+		 * device must be resumed first; otherwise the register access faults
+		 * with an asynchronous SError.
+		 */
+		pm_runtime_resume_and_get(inst->dev->dev);
+
+		ret = wave5_vpu_dec_set_eos_on_firmware(inst);
+		if (ret)
+			dev_warn(inst->dev->dev,
+				 "Setting EOS for the bitstream, fail: %d\n", ret);
+
+		pm_runtime_put_autosuspend(inst->dev->dev);
+	}
 
 	/*
-	 * job_abort() runs from the STREAMOFF path and may be called while the
-	 * device is runtime suspended. Setting the EOS flag talks to the
-	 * firmware (send_firmware_command() accesses VPU registers), so the
-	 * device must be resumed first; otherwise the register access faults
-	 * with an asynchronous SError.
+	 * The one caller that must always end the job. v4l2_m2m_cancel_job()
+	 * only gets here while this context owns the running job, and then
+	 * sleeps until TRANS_RUNNING clears -- which only a finish does. Go
+	 * straight past the ownership check: device_run() may not have claimed
+	 * the slot yet, and skipping the finish would leave streamoff waiting
+	 * for a job nobody is going to end.
 	 */
-	pm_runtime_resume_and_get(inst->dev->dev);
-
-	ret = wave5_vpu_dec_set_eos_on_firmware(inst);
-	if (ret)
-		dev_warn(inst->dev->dev,
-			 "Setting EOS for the bitstream, fail: %d\n", ret);
-
-	pm_runtime_put_autosuspend(inst->dev->dev);
-
-	v4l2_m2m_job_finish(inst->v4l2_m2m_dev, m2m_ctx);
+	clear_bit(WAVE5_JOB_RUNNING, &inst->job_flags);
+	v4l2_m2m_job_finish(inst->v4l2_m2m_dev, inst->v4l2_fh.m2m_ctx);
 }
 
 static int wave5_vpu_dec_job_ready(void *priv)
@@ -2039,6 +2247,7 @@ static int wave5_vpu_open_dec(struct file *filp)
 	mutex_init(&inst->feed_lock);
 	mutex_init(&inst->inst_lock);
 	INIT_LIST_HEAD(&inst->avail_src_bufs);
+	INIT_DELAYED_WORK(&inst->unstall_work, wave5_vpu_dec_unstall_work);
 
 	inst->codec_info = kzalloc(sizeof(*inst->codec_info), GFP_KERNEL);
 	if (!inst->codec_info) {
@@ -2133,6 +2342,15 @@ cleanup_inst:
 
 static int wave5_vpu_dec_release(struct file *filp)
 {
+	struct vpu_instance *inst = file_to_vpu_inst(filp);
+
+	/*
+	 * The unstall timer dereferences both m2m_ctx and inst, which
+	 * wave5_vpu_release_device() frees. stop_streaming() disarms it for a
+	 * streaming instance; make sure nothing is left pending on any other path.
+	 */
+	cancel_delayed_work_sync(&inst->unstall_work);
+
 	return wave5_vpu_release_device(filp, wave5_vpu_dec_close, "decoder");
 }
 

@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * DT Overlay for AM62D2 DSP shared memory carveout.
+ * Copyright (C) 2026 Texas Instruments Incorporated - https://www.ti.com/
+ */
+
+/dts-v1/;
+/plugin/;
+
+&reserved_memory {
+	#address-cells = <2>;
+	#size-cells = <2>;
+
+	dsp_shared_region: dsp_shared-memories {
+		compatible = "dma-heap-carveout";
+		reg = <0x00 0x99700000 0x00 0x100000>;
+	};
+};

@@ -9,6 +9,7 @@
 #define VPUAPI_H_INCLUDED
 
 #include <linux/kfifo.h>
+#include <linux/workqueue.h>
 #include <linux/idr.h>
 #include <linux/genalloc.h>
 #include <linux/devfreq.h>
@@ -851,6 +852,8 @@ struct vpu_instance {
 	struct mutex feed_lock; /* lock for feeding bitstream buffers */
 	bool queuing_fail; /* if there is the queuing failure */
 	bool empty_queue;
+	unsigned long job_flags; /* bit 0: a device_run() job is ours to finish */
+	struct delayed_work unstall_work; /* releases a stale empty_queue park */
 	struct vpu_buf bitstream_vbuf;
 	dma_addr_t last_rd_ptr;
 	size_t remaining_consumed_bytes;
