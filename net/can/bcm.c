@@ -350,6 +350,7 @@ static void bcm_can_tx(struct bcm_op *op, struct canfd_frame *cf)
 
 	can_skb_reserve(skb);
 	can_skb_prv(skb)->ifindex = dev->ifindex;
+	can_skb_prv(skb)->skbcnt = 0;
 
 	skb_put_data(skb, cf, op->cfsiz);
 
@@ -396,7 +397,6 @@ static void bcm_send_to_user(struct bcm_op *op, struct bcm_msg_head *head,
 	struct sockaddr_can *addr;
 	struct sock *sk = op->sk;
 	unsigned int datalen = head->nframes * op->cfsiz;
-	int err;
 	unsigned int *pflags;
 	enum skb_drop_reason reason;
 
@@ -453,8 +453,8 @@ static void bcm_send_to_user(struct bcm_op *op, struct bcm_msg_head *head,
 	addr->can_family  = AF_CAN;
 	addr->can_ifindex = op->rx_ifindex;
 
-	err = sock_queue_rcv_skb_reason(sk, skb, &reason);
-	if (err < 0) {
+	reason = sock_queue_rcv_skb_reason(sk, skb);
+	if (reason) {
 		struct bcm_sock *bo = bcm_sk(sk);
 
 		sk_skb_reason_drop(sk, skb, reason);
@@ -1620,6 +1620,7 @@ static int bcm_tx_send(struct msghdr *msg, int ifindex, struct sock *sk,
 	}
 
 	can_skb_prv(skb)->ifindex = dev->ifindex;
+	can_skb_prv(skb)->skbcnt = 0;
 	skb->dev = dev;
 	can_skb_set_owner(skb, sk);
 	err = can_send(skb, 1); /* send with loopback */

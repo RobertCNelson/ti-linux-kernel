@@ -781,7 +781,7 @@ static struct rfcomm_session *rfcomm_session_create(bdaddr_t *src,
 	addr.l2_psm    = 0;
 	addr.l2_cid    = 0;
 	addr.l2_bdaddr_type = BDADDR_BREDR;
-	*err = kernel_bind(sock, (struct sockaddr *) &addr, sizeof(addr));
+	*err = kernel_bind(sock, (struct sockaddr_unsized *)&addr, sizeof(addr));
 	if (*err < 0)
 		goto failed;
 
@@ -1458,6 +1458,10 @@ static int rfcomm_apply_pn(struct rfcomm_dlc *d, int cr, struct rfcomm_pn *pn)
 
 	d->mtu = __le16_to_cpu(pn->mtu);
 
+	/* MTU 0 causes an infinite loop when fragmenting in sendmsg */
+	if (!d->mtu)
+		d->mtu = RFCOMM_DEFAULT_MTU;
+
 	if (cr && d->mtu > s->mtu)
 		d->mtu = s->mtu;
 
@@ -1813,6 +1817,12 @@ static struct rfcomm_session *rfcomm_recv_frame(struct rfcomm_session *s,
 		return s;
 	}
 
+	if (skb->len < sizeof(*hdr) + 1 ||
+	    (!__test_ea(hdr->len) && skb->len < sizeof(*hdr) + 2)) {
+		kfree_skb(skb);
+		return s;
+	}
+
 	dlci = __get_dlci(hdr->addr);
 	type = __get_type(hdr->ctrl);
 
@@ -2134,7 +2144,7 @@ static int rfcomm_add_listener(bdaddr_t *ba)
 	addr.l2_psm    = cpu_to_le16(L2CAP_PSM_RFCOMM);
 	addr.l2_cid    = 0;
 	addr.l2_bdaddr_type = BDADDR_BREDR;
-	err = kernel_bind(sock, (struct sockaddr *) &addr, sizeof(addr));
+	err = kernel_bind(sock, (struct sockaddr_unsized *)&addr, sizeof(addr));
 	if (err < 0) {
 		BT_ERR("Bind failed %d", err);
 		goto failed;

@@ -541,17 +541,13 @@ static int tps65219_probe(struct i2c_client *client)
 		return ret;
 	}
 
-	/*
-	 * Only register PMIC power-off handler if system-power-controller
-	 * property is present.
-	 */
 	if (of_device_is_system_power_controller(tps->dev->of_node)) {
 		ret = devm_register_power_off_handler(tps->dev,
 						      tps65219_power_off_handler,
 						      tps);
 		if (ret)
 			return dev_err_probe(tps->dev, ret,
-					"failed to register power-off handler\n");
+					     "Failed to register power-off handler\n");
 	}
 
 	return 0;

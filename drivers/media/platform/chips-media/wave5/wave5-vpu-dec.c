@@ -390,7 +390,6 @@ static void wave5_update_min_bufs_ctrl(struct vpu_instance *inst, u32 fbc_buf_co
 		v4l2_ctrl_s_ctrl(ctrl, fbc_buf_count);
 }
 
-
 static int handle_dynamic_resolution_change(struct vpu_instance *inst)
 {
 	struct v4l2_fh *fh = &inst->v4l2_fh;
