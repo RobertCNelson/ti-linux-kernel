@@ -357,10 +357,23 @@ static void check_for_simplefb_device(struct tidss_device *tidss)
 	if (IS_ENABLED(CONFIG_FB_SIMPLE)) {
 		struct device *simplefb_dev;
 		struct device_node *simplefb_node;
+		struct device_node *display_node;
 
 		simplefb_node = of_find_compatible_node(NULL, NULL, "simple-framebuffer");
 		if (!simplefb_node)
 			return;
+
+		/* Check if this simplefb is configured for this DSS instance */
+		display_node = of_parse_phandle(simplefb_node, "display", 0);
+		if (display_node) {
+			if (display_node != tidss->dev->of_node) {
+				/* This simplefb is for a different DSS instance */
+				of_node_put(display_node);
+				of_node_put(simplefb_node);
+				return;
+			}
+			of_node_put(display_node);
+		}
 
 		simplefb_dev = bus_find_device_by_of_node(&platform_bus_type, simplefb_node);
 		if (!simplefb_dev) {
@@ -465,10 +478,15 @@ static int tidss_probe(struct platform_device *pdev)
 
 	dispc_splash_fini(tidss->dispc);
 
-	/* Remove possible early fb before setting up the fbdev */
-	ret = aperture_remove_all_conflicting_devices(tidss_driver.name);
-	if (ret)
-		goto err_drm_dev_unreg;
+	/*
+	 * Remove conflicting framebuffer devices only if this DSS instance
+	 * was the one configured by the bootloader (simplefb)
+	 */
+	if (tidss->simplefb_enabled) {
+		ret = aperture_remove_all_conflicting_devices(tidss_driver.name);
+		if (ret)
+			goto err_drm_dev_unreg;
+	}
 
 	drm_client_setup(ddev, NULL);
 
