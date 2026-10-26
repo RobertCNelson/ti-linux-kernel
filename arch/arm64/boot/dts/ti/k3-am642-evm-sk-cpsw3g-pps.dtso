@@ -40,7 +40,7 @@
 
 &timesync_router {
 	/* Use Time Sync Router to map GENF1 input to HW8_TS_PUSH output. */
-	mux-reg-masks-state = <
+	mux-reg-mask-val = <
 		/* pps [cpts genf1] in22 -> out37 [cpts hw8_push] */
 		K3_TS_OFFSET(37, 0x0001ffff, 22)
 		/* pps [cpts genf1] in22 -> out24 [SYNC0_OUT pin] */
