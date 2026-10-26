@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+/**
+ * DT Overlay to add simplefb node for DSI display.
+ *
+ * This overlay adds the simple-framebuffer node with the appropriate
+ * power-domains and clocks for DSI display on DSS1.
+ *
+ * Copyright (C) 2026 Texas Instruments Incorporated - https://www.ti.com/
+ */
+
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/soc/ti,sci_pm_domain.h>
+
+&{/chosen} {
+	framebuffer0: framebuffer@0 {
+		compatible = "simple-framebuffer";
+		power-domains = <&k3_pds 232 TI_SCI_PD_EXCLUSIVE>,  /* DSS1 */
+				<&k3_pds 231 TI_SCI_PD_EXCLUSIVE>,  /* DSI0 */
+				<&k3_pds 238 TI_SCI_PD_EXCLUSIVE>;  /* DPHY_TX0 */
+		clocks = <&k3_clks 232 8>,       /* DSS1 fck */
+			 <&dss1_vp1_clk>,        /* DSS1 vp1 */
+			 <&k3_clks 232 4>;       /* DSS1 vp2 */
+		display = <&dss1>;
+		status = "disabled";
+		bootph-all;
+	};
+};
