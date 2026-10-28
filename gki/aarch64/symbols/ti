@@ -522,8 +522,11 @@
   drm_atomic_helper_damage_iter_next
   drm_atomic_helper_disable_plane
   drm_atomic_helper_page_flip
+  __drm_atomic_helper_plane_destroy_state
   drm_atomic_helper_plane_destroy_state
+  __drm_atomic_helper_plane_duplicate_state
   drm_atomic_helper_plane_duplicate_state
+  __drm_atomic_helper_plane_reset
   drm_atomic_helper_plane_reset
   drm_atomic_helper_set_config
   drm_atomic_helper_shutdown
@@ -616,6 +619,7 @@
   drm_mode_set_crtcinfo
   drm_mode_set_name
   drm_mode_vrefresh
+  drm_object_attach_property
   drm_of_find_panel_or_bridge
   drm_of_lvds_get_data_mapping
   drm_of_lvds_get_dual_link_pixel_order
@@ -636,6 +640,7 @@
   drm_prime_get_contiguous_size
   drm_printf
   drm_probe_ddc
+  drm_property_create_bool
   drm_read
   drm_release
   drm_simple_encoder_init
@@ -650,6 +655,7 @@
   ether_setup
   eth_header
   eth_header_parse
+  eth_header_parse_protocol
   eth_mac_addr
   ethnl_cable_test_fault_length_with_src
   ethnl_cable_test_result_with_src
@@ -1155,6 +1161,7 @@
   of_get_regulator_init_data
   of_graph_get_endpoint_by_regs
   of_graph_get_endpoint_count
+  of_graph_get_next_endpoint
   of_graph_get_next_port
   of_graph_get_next_port_endpoint
   of_graph_get_port_by_id
@@ -1193,6 +1200,7 @@
   of_property_read_u32_index
   of_property_read_variable_u32_array
   of_property_read_variable_u8_array
+  of_prop_next_string
   of_prop_next_u32
   of_regulator_match
   of_reserved_mem_device_init_by_idx
@@ -1201,6 +1209,7 @@
   of_reserved_mem_region_to_resource
   of_reset_control_array_get
   open_candev
+  orderly_poweroff
   page_pool_alloc_pages
   page_pool_create
   page_pool_destroy
@@ -1582,6 +1591,7 @@
   skb_queue_head
   skb_queue_purge_reason
   skb_queue_tail
+  skb_set_owner_w
   skb_trim
   skb_tstamp_tx
   sk_skb_reason_drop
@@ -1617,6 +1627,7 @@
   snd_soc_component_write
   snd_soc_copy_dai_args
   snd_soc_dai_active
+  snd_soc_daifmt_clock_provider_flipped
   snd_soc_daifmt_clock_provider_from_bitmap
   snd_soc_daifmt_parse_clock_provider_raw
   snd_soc_daifmt_parse_format
