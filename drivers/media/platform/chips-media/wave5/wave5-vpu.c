@@ -262,7 +262,37 @@ static __maybe_unused int wave5_pm_resume(struct device *dev)
 	return ret;
 }
 
+static __maybe_unused int wave5_system_suspend(struct device *dev)
+{
+	struct vpu_device *vpu = dev_get_drvdata(dev);
+
+	if (vpu->v4l2_m2m_dec_dev)
+		v4l2_m2m_suspend(vpu->v4l2_m2m_dec_dev);
+	if (vpu->v4l2_m2m_enc_dev)
+		v4l2_m2m_suspend(vpu->v4l2_m2m_enc_dev);
+
+	return pm_runtime_force_suspend(dev);
+}
+
+static __maybe_unused int wave5_system_resume(struct device *dev)
+{
+	struct vpu_device *vpu = dev_get_drvdata(dev);
+	int ret;
+
+	ret = pm_runtime_force_resume(dev);
+	if (ret < 0)
+		return ret;
+
+	if (vpu->v4l2_m2m_dec_dev)
+		v4l2_m2m_resume(vpu->v4l2_m2m_dec_dev);
+	if (vpu->v4l2_m2m_enc_dev)
+		v4l2_m2m_resume(vpu->v4l2_m2m_enc_dev);
+
+	return 0;
+}
+
 static const struct dev_pm_ops wave5_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(wave5_system_suspend, wave5_system_resume)
 	SET_RUNTIME_PM_OPS(wave5_pm_suspend, wave5_pm_resume, NULL)
 };
 
