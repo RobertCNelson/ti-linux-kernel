@@ -136,6 +136,16 @@ static void tidss_aod_collect_bridge_devs(struct tidss_device *tidss,
 }
 
 /*
+ * BL: dev_pm_genpd_set_always_on() is a TI pmdomain core extension that the
+ * GKI kernel does not export, so tidss.ko must not use it. ALWAYS_ON_DISPLAY
+ * is not exposed (see tidss_modeset_init()), which keeps this path unused.
+ */
+static int tidss_aod_genpd_set_always_on(struct device *dev, bool on)
+{
+	return -EOPNOTSUPP;
+}
+
+/*
  * Hold or release PM references and GENPD_FLAG_ALWAYS_ON for the display
  * pipeline (TIDSS + bridges/PHYs) associated with @hw_videoport.
  */
@@ -163,7 +173,7 @@ void tidss_aod_set_genpd_always_on(struct tidss_device *tidss,
 	if (!on && !tidss_any_vp_always_on(tidss))
 		pm_runtime_put_noidle(tidss->dev);
 
-	ret = dev_pm_genpd_set_always_on(tidss->dev, on);
+	ret = tidss_aod_genpd_set_always_on(tidss->dev, on);
 	dev_dbg(tidss->dev,
 		"always-on-display: TIDSS (TI DM id=%u) rpm_hold -> %s, genpd always-on -> %s%s\n",
 		tidss_aod_ti_dev_id(tidss->dev),
@@ -181,10 +191,10 @@ void tidss_aod_set_genpd_always_on(struct tidss_device *tidss,
 			pm_runtime_put_noidle(d);
 
 		/* Try parent if device has no genpd (e.g. PHY child device) */
-		ret = dev_pm_genpd_set_always_on(genpd_dev, on);
+		ret = tidss_aod_genpd_set_always_on(genpd_dev, on);
 		if (ret == -ENODEV && genpd_dev->parent) {
 			genpd_dev = genpd_dev->parent;
-			ret = dev_pm_genpd_set_always_on(genpd_dev, on);
+			ret = tidss_aod_genpd_set_always_on(genpd_dev, on);
 		}
 
 		dev_dbg(tidss->dev,

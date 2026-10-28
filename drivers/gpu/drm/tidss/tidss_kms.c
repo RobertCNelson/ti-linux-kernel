@@ -355,12 +355,12 @@ int tidss_modeset_init(struct tidss_device *tidss)
 		return -ENOMEM;
 	}
 
-	tidss->always_on_display_property =
-		drm_property_create_bool(ddev, 0, "ALWAYS_ON_DISPLAY");
-	if (!tidss->always_on_display_property) {
-		dev_err(tidss->dev, "Failed to create ALWAYS_ON_DISPLAY property\n");
-		return -ENOMEM;
-	}
+	/*
+	 * BL: ALWAYS_ON_DISPLAY relies on dev_pm_genpd_set_always_on(), which
+	 * is not part of the GKI KMI. Without it the power domain is still
+	 * turned off in system suspend while tidss skips suspend/resume, so
+	 * do not create the property: always_on_display stays false.
+	 */
 
 	ret = tidss_dispc_modeset_init(tidss);
 	if (ret)
