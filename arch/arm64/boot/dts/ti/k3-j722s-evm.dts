@@ -1255,4 +1255,28 @@
 	ti,dma-heap-name = "carveout_video";
 };
 
+/*
+ * DP0 (DSS1 VP1 -> DSI0 -> SN65DSI86 -> DP connector) is not supported on
+ * Android: the SN65DSI86 driver is not built. With DSI0 enabled but no DSI
+ * device attached, cdns-dsi never registers its bridge, tidss defers
+ * forever and the HDMI output on DSS1 VP0 is lost as well.
+ * Keep the nodes so that overlays referencing them still apply (the RPi
+ * DSI panel overlay re-enables &dsi0 and &dphy_tx0).
+ */
+&dp0 {
+	status = "disabled";
+};
+
+&dsi_edp_bridge {
+	status = "disabled";
+};
+
+&dphy_tx0 {
+	status = "disabled";
+};
+
+&dsi0 {
+	status = "disabled";
+};
+
 #include "k3-j722s-ti-ipc-firmware.dtsi"
