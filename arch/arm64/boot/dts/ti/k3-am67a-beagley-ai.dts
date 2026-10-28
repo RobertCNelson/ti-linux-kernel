@@ -653,8 +653,16 @@
 	};
 };
 
-&serdes0 {
+&serdes_ln_ctrl {
+	idle-states = <J722S_SERDES0_LANE0_USB>,
+		      <J722S_SERDES1_LANE0_PCIE0_LANE0>;
+};
+
+&serdes_wiz0 {
 	status = "okay";
+};
+
+&serdes0 {
 	serdes0_usb_link: phy@0 {
 		reg = <0>;
 		cdns,num-lanes = <1>;
