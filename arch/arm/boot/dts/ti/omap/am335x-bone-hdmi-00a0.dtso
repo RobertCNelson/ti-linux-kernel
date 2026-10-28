@@ -13,6 +13,7 @@
 
 #include <dt-bindings/pinctrl/am33xx.h>
 #include <dt-bindings/interrupt-controller/irq.h>
+#include <dt-bindings/gpio/gpio.h>
 
 &{/} {
 	hdmi0: connector-hdmi {
@@ -100,13 +101,18 @@
 	#address-cells = <1>;
 	#size-cells = <0>;
 
-	it66121: it66121 {
+	it66121: it66121@4d {
 		compatible = "ite,it66121";
 		reg = <0x4d>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&bb_lcd_pins>;
 
 		#sound-dai-cells = <0>;
+
+		vcn33-supply = <&v3v3>;
+		vcn18-supply = <&ldo1_reg>;
+		vrf12-supply = <&buck2>;
+		reset-gpios = <&gpio2 2 GPIO_ACTIVE_LOW>;
 
 		interrupt-parent = <&gpio2>;
 		interrupts = <4 IRQ_TYPE_EDGE_RISING>;
