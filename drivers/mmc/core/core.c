@@ -1387,7 +1387,7 @@ void mmc_power_off(struct mmc_host *host)
 	 * XO-1.5, require a short delay after poweroff before the card
 	 * can be successfully turned on again.
 	 */
-	mmc_delay_us(host->ios.power_off_delay_us);
+	mmc_delay(1);
 }
 
 void mmc_power_cycle(struct mmc_host *host, u32 ocr)
