@@ -231,7 +231,7 @@ static const struct ti_csi2rx_fmt ti_csi2rx_formats[] = {
 		.bpp			= 16,
 		.size			= SHIM_DMACNTX_SIZE_16,
 	}, {
-		.fourcc			= V4L2_META_FMT_GENERIC_16,
+		.fourcc			= V4L2_META_FMT_GENERIC_CSI2_16,
 		.code			= MEDIA_BUS_FMT_META_10,
 		.csi_dt			= MIPI_CSI2_DT_EMBEDDED_8B,
 		.bpp			= 16,
