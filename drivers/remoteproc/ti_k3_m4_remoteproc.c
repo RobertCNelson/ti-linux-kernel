@@ -33,6 +33,7 @@ static const struct rproc_ops k3_m4_rproc_ops = {
 	.kick = k3_rproc_kick,
 	.da_to_va = k3_rproc_da_to_va,
 	.get_loaded_rsc_table = k3_get_loaded_rsc_table,
+	.handle_rsc = k3_rproc_handle_rsc,
 };
 
 static int k3_m4_rproc_probe(struct platform_device *pdev)

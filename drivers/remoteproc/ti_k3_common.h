@@ -24,6 +24,13 @@
 #define KEYSTONE_RPROC_LOCAL_ADDRESS_MASK	(SZ_16M - 1)
 #define PROC_BOOT_STATUS_FLAG_CPU_WFI		0x00000002
 
+#define FW_TI_RSC_MAGIC				((u32)'t' << 24 | \
+					(u32)'i' << 16 | \
+					(u32)'t' << 8 | \
+					(u32)'i')
+
+#define TI_MCU_ALWAYS_ON	BIT(0)
+
 /**
  * struct k3_rproc_mem - internal memory structure
  * @cpu_addr: MPU virtual address of the memory region
@@ -83,6 +90,7 @@ struct k3_rproc_dev_data {
  * @suspend_status: suspend status
  * @qos_req: PM QoS request
  * @system_shutdown_work: work function to handle MCU-initiated system shutdown
+ * @always_on: remote processor is always on, so not stop
  */
 struct k3_rproc {
 	struct device *dev;
@@ -106,6 +114,13 @@ struct k3_rproc {
 	enum omap_rp_mbox_messages suspend_status;
 	struct dev_pm_qos_request qos_req;
 	struct work_struct system_shutdown_work;
+	bool always_on;
+};
+
+struct fw_rsc_ti_rproc {
+	u32 len;
+	u32 magic_num;
+	u32 features;
 };
 
 void k3_rproc_mbox_callback(struct mbox_client *client, void *data);
@@ -137,4 +152,6 @@ int k3_rproc_suspend_late(struct device *dev);
 void k3_remove_pm_qos_request(void *data);
 void k3_system_shutdown_work_fn(struct work_struct *work);
 int k3_rproc_init_work(struct k3_rproc *kproc);
+int k3_rproc_handle_rsc(struct rproc *rproc, u32 rsc_type, void *rsc, int offset, int avail);
+
 #endif /* REMOTEPROC_TI_K3_COMMON_H */

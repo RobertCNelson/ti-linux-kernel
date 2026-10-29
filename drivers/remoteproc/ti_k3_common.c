@@ -848,5 +848,29 @@ void k3_remove_pm_qos_request(void *data)
 }
 EXPORT_SYMBOL_GPL(k3_remove_pm_qos_request);
 
+int k3_rproc_handle_rsc(struct rproc *rproc, u32 rsc_type, void *rsc, int offset, int avail)
+{
+	struct fw_rsc_ti_rproc *ti_rcore_rsc = rsc;
+	struct k3_rproc *kproc = rproc->priv;
+
+	if (!ti_rcore_rsc)
+		return RSC_IGNORED;
+
+	if (ti_rcore_rsc->magic_num != FW_TI_RSC_MAGIC)
+		return RSC_IGNORED;
+
+	kproc->always_on = (ti_rcore_rsc->features & TI_MCU_ALWAYS_ON) != 0;
+
+	/* Allow stop/start of remote processor if always_on is not set */
+	if (!kproc->always_on) {
+		rproc->ops->prepare = k3_rproc_prepare;
+		rproc->ops->start = k3_rproc_start;
+		rproc->ops->stop = k3_rproc_stop;
+		rproc->ops->unprepare = k3_rproc_unprepare;
+	}
+	return RSC_HANDLED;
+}
+EXPORT_SYMBOL_GPL(k3_rproc_handle_rsc);
+
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("TI K3 common Remoteproc code");
