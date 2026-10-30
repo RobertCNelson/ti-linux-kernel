@@ -385,15 +385,6 @@ struct port_statistics {
 
 /* Firmware offsets/size information */
 struct prueth_fw_offsets {
-	u32 index_array_offset;
-	u32 bin_array_offset;
-	u32 nt_array_offset;
-	u32 index_array_loc;
-	u32 bin_array_loc;
-	u32 nt_array_loc;
-	u32 index_array_max_entries;
-	u32 bin_array_max_entries;
-	u32 nt_array_max_entries;
 	u32 vlan_ctrl_byte;
 	u32 vlan_filter_tbl;
 	u32 mc_ctrl_byte;
@@ -506,18 +497,9 @@ struct prueth {
 	bool support_lre;
 	struct hrtimer tbl_check_timer;
 	unsigned int hsr_mode;
-	unsigned int tbl_check_period;
-	unsigned int node_table_clear;
-	unsigned int node_table_clear_last_cmd;
 	unsigned int tbl_check_mask;
 	enum iec62439_3_tr_modes prp_tr_mode;
-	struct node_tbl *nt;
-	struct nt_queue_t *mac_queue;
-	struct kthread_worker *nt_kworker;
-	struct kthread_work nt_work;
 	u32 rem_cnt;
-	/* lock between kthread worker and rx packet processing code */
-	spinlock_t nt_lock;
 	struct lre_statistics *lre_stats;
 
 	struct net_device *hw_bridge_dev;

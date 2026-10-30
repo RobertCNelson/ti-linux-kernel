@@ -162,63 +162,6 @@ int hsr_lredev_attr_set(struct hsr_priv *hsr, struct lredev_attr *attr)
 	return -EINVAL;
 }
 
-static int _hsr_lredev_get_node_table(struct hsr_priv *hsr,
-				      struct lre_node_table_entry table[],
-				      int size)
-{
-	struct hsr_node *node;
-	int i = 0;
-
-	rcu_read_lock();
-
-	list_for_each_entry_rcu(node, &hsr->node_db, mac_list) {
-		if (hsr_addr_is_self(hsr, node->macaddress_A))
-			continue;
-		/* SANs are not shown as part of Node Table */
-		if (node->san_a || node->san_b)
-			continue;
-		memcpy(&table[i].mac_address[0],
-		       &node->macaddress_A[0], ETH_ALEN);
-		table[i].time_last_seen_a = node->time_in[HSR_PT_SLAVE_A];
-		table[i].time_last_seen_b = node->time_in[HSR_PT_SLAVE_B];
-		if (hsr->prot_version == PRP_V1)
-			table[i].node_type = IEC62439_3_DANP;
-		else if (hsr->prot_version <= HSR_V1)
-			table[i].node_type = IEC62439_3_DANH;
-		else
-			continue;
-		i++;
-	}
-	rcu_read_unlock();
-
-	return i;
-}
-
-int hsr_lredev_get_node_table(struct hsr_priv *hsr,
-			      struct lre_node_table_entry table[],
-			      int size)
-{
-	struct hsr_port *port_a = hsr_port_get_hsr(hsr, HSR_PT_SLAVE_A);
-	struct net_device *slave_a_dev;
-	int ret = -EINVAL;
-
-	if (!port_a)
-		return ret;
-
-	if (!hsr->fwd_offloaded)
-		return _hsr_lredev_get_node_table(hsr, table, size);
-
-	slave_a_dev = port_a->dev;
-
-	if (slave_a_dev && slave_a_dev->lredev_ops &&
-	    slave_a_dev->lredev_ops->lredev_get_node_table)
-		ret =
-		slave_a_dev->lredev_ops->lredev_get_node_table(slave_a_dev,
-							       table,
-							       size);
-	return ret;
-}
-
 static int hsr_set_sv_frame_vid(struct hsr_priv *hsr, u16 vid)
 {
 	struct hsr_port *port_a = hsr_port_get_hsr(hsr, HSR_PT_SLAVE_A);
@@ -1005,8 +948,7 @@ int hsr_dev_finalize(struct net_device *hsr_dev, struct net_device *slave[2],
 	hsr->sup_sequence_nr = HSR_SUP_SEQNR_START;
 
 	timer_setup(&hsr->announce_timer, hsr_announce, 0);
-	if (!hsr->fwd_offloaded)
-		timer_setup(&hsr->prune_timer, hsr_prune_nodes, 0);
+	timer_setup(&hsr->prune_timer, hsr_prune_nodes, 0);
 	timer_setup(&hsr->prune_proxy_timer, hsr_prune_proxy_nodes, 0);
 	timer_setup(&hsr->announce_proxy_timer, hsr_proxy_announce, 0);
 
@@ -1065,12 +1007,7 @@ int hsr_dev_finalize(struct net_device *hsr_dev, struct net_device *slave[2],
 			  jiffies + msecs_to_jiffies(PRUNE_PROXY_PERIOD));
 	}
 
-	/* For LRE rx offload, pruning is expected to happen
-	 * at the hardware or firmware . So don't do this in software
-	 */
-	if (!hsr->fwd_offloaded)
-		mod_timer(&hsr->prune_timer,
-			  jiffies + msecs_to_jiffies(PRUNE_PERIOD));
+	mod_timer(&hsr->prune_timer, jiffies + msecs_to_jiffies(PRUNE_PERIOD));
 	/* for offloaded case, expect both slaves have the
 	 * same MAC address configured. If not fail.
 	 */

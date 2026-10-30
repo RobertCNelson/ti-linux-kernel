@@ -223,8 +223,6 @@ struct hsr_priv {
 	enum iec62439_3_tr_modes prp_tr;
 	/* Duplicate discard mode */
 	enum iec62439_3_dd_modes dd_mode;
-	/* Clear Node Table command */
-	enum iec62439_3_clear_nt_cmd clear_nt_cmd;
 	u32 dlrmt;	/* duplicate list reside max time */
 	unsigned char		sup_multicast_addr[ETH_ALEN] __aligned(sizeof(u16));
 				/* Align to u16 boundary to avoid unaligned access
@@ -241,7 +239,6 @@ struct hsr_priv {
 	struct proc_dir_entry *clear_nt_file;
 	struct proc_dir_entry *dlrmt_file;
 	struct proc_dir_entry *lre_stats_file;
-	struct proc_dir_entry *node_table_file;
 	struct proc_dir_entry *disable_sv_file;
 #endif
 };
@@ -341,9 +338,6 @@ int hsr_lredev_attr_set(struct hsr_priv *hsr,
 			struct lredev_attr *attr);
 int hsr_lredev_attr_get(struct hsr_priv *hsr,
 			struct lredev_attr *attr);
-int hsr_lredev_get_node_table(struct hsr_priv *hsr,
-			      struct lre_node_table_entry table[],
-			      int size);
 int  hsr_lredev_get_lre_stats(struct hsr_priv *hsr,
 			      struct lre_stats *stats);
 #endif /*  __HSR_PRIVATE_H */
