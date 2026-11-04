@@ -9,6 +9,7 @@
 #include <linux/dmaengine.h>
 #include <linux/soc/ti/ti_sci_protocol.h>
 #include <linux/dma/ti-cppi5.h>
+#include <linux/pm_runtime.h>
 
 #include "../virt-dma.h"
 #include "k3-psil-priv.h"

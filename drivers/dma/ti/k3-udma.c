@@ -2792,6 +2792,11 @@ static int udma_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, ud);
 
+	/* Enable runtime PM */
+	ret = devm_pm_runtime_enable(dev);
+	if (ret)
+		return ret;
+
 	ret = of_dma_controller_register(dev->of_node, udma_of_xlate, ud);
 	if (ret) {
 		dev_err(dev, "failed to register of_dma controller\n");
@@ -2850,6 +2855,7 @@ static int __maybe_unused udma_pm_resume(struct device *dev)
 
 static const struct dev_pm_ops udma_pm_ops = {
 	SET_LATE_SYSTEM_SLEEP_PM_OPS(udma_pm_suspend, udma_pm_resume)
+	SET_RUNTIME_PM_OPS(udma_pm_suspend, udma_pm_resume, NULL)
 };
 
 static struct platform_driver udma_driver = {
