@@ -900,7 +900,14 @@ static void gpmc_cs_get_memconf(int cs, u32 *base, u32 *size)
 	u32 mask;
 
 	l = gpmc_cs_read_reg(cs, GPMC_CS_CONFIG7);
-	*base = (l & 0x3f) << GPMC_CHUNK_SHIFT;
+	/*
+	 * BASEADDRESS holds only address bits A29..A24. Take the remaining
+	 * upper bits from the data window, which on AM62/AM64 starts at
+	 * 0x50000000 rather than 0.
+	 */
+	*base = (gpmc_mem_root.start &
+		~(GPMC_CONFIG7_BASEADDRESS_MASK << GPMC_CHUNK_SHIFT)) |
+		((l & GPMC_CONFIG7_BASEADDRESS_MASK) << GPMC_CHUNK_SHIFT);
 	mask = (l >> 8) & 0x0f;
 	*size = (1 << GPMC_SECTION_SHIFT) - (mask << GPMC_CHUNK_SHIFT);
 }
