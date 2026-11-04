@@ -22,6 +22,7 @@
 #include <linux/soc/ti/ti_sci_inta_msi.h>
 #include <linux/soc/ti/ti_sci_protocol.h>
 #include <asm-generic/msi.h>
+#include <linux/pm_runtime.h>
 
 #define TI_SCI_DEV_ID_MASK	0xffff
 #define TI_SCI_DEV_ID_SHIFT	16
@@ -581,6 +582,29 @@ static int ti_sci_inta_set_type(struct irq_data *data, unsigned int type)
 	}
 }
 
+/**
+ * ti_sci_inta_irq_suspend() - Suspend IRQ handling
+ * @data:	Pointer to corresponding irq_data
+ *
+ * Mask the IRQ to prevent it from firing during suspend
+ */
+static void ti_sci_inta_irq_suspend(struct irq_data *data)
+{
+	ti_sci_inta_mask_irq(data);
+}
+
+/**
+ * ti_sci_inta_irq_resume() - Resume IRQ handling
+ * @data:	Pointer to corresponding irq_data
+ *
+ * Unmask the IRQ after resume if it was enabled before suspend
+ */
+static void ti_sci_inta_irq_resume(struct irq_data *data)
+{
+	if (irqd_is_wakeup_set(data))
+		ti_sci_inta_unmask_irq(data);
+}
+
 static struct irq_chip ti_sci_inta_irq_chip = {
 	.name			= "INTA",
 	.irq_ack		= ti_sci_inta_ack_irq,
@@ -590,6 +614,8 @@ static struct irq_chip ti_sci_inta_irq_chip = {
 	.irq_set_affinity	= ti_sci_inta_set_affinity,
 	.irq_request_resources	= ti_sci_inta_request_resources,
 	.irq_release_resources	= ti_sci_inta_release_resources,
+	.irq_suspend		= ti_sci_inta_irq_suspend,
+	.irq_resume		= ti_sci_inta_irq_resume,
 };
 
 /**
@@ -766,6 +792,11 @@ static int ti_sci_inta_irq_domain_probe(struct platform_device *pdev)
 		dev_err(dev, "Failed to allocate msi domain\n");
 		return -ENOMEM;
 	}
+
+	/* Enable runtime PM */
+	ret = devm_pm_runtime_enable(dev);
+	if (ret)
+		return ret;
 
 	INIT_LIST_HEAD(&inta->vint_list);
 	mutex_init(&inta->vint_mutex);
