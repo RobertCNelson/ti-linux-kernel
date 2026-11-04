@@ -793,6 +793,8 @@ static int ti_sci_inta_irq_domain_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
+	dev_set_drvdata(dev, inta);
+
 	/* Enable runtime PM */
 	ret = devm_pm_runtime_enable(dev);
 	if (ret)
@@ -806,6 +808,34 @@ static int ti_sci_inta_irq_domain_probe(struct platform_device *pdev)
 	return 0;
 }
 
+static int ti_sci_inta_runtime_suspend(struct device *dev)
+{
+	return 0;
+}
+
+static int ti_sci_inta_runtime_resume(struct device *dev)
+{
+	struct ti_sci_inta_irq_domain *inta = dev_get_drvdata(dev);
+	struct ti_sci_inta_vint_desc *vint_desc;
+	int bit;
+
+	mutex_lock(&inta->vint_mutex);
+	list_for_each_entry(vint_desc, &inta->vint_list, list) {
+		for_each_set_bit(bit, vint_desc->event_map, MAX_EVENTS_PER_VINT) {
+			writeq_relaxed(BIT(bit), inta->base +
+				       vint_desc->vint_id * 0x1000 +
+				       VINT_ENABLE_SET_OFFSET);
+		}
+	}
+	mutex_unlock(&inta->vint_mutex);
+
+	return 0;
+}
+
+static DEFINE_RUNTIME_DEV_PM_OPS(ti_sci_inta_pm_ops,
+				 ti_sci_inta_runtime_suspend,
+				 ti_sci_inta_runtime_resume, NULL);
+
 static const struct of_device_id ti_sci_inta_irq_domain_of_match[] = {
 	{ .compatible = "ti,sci-inta", },
 	{ /* sentinel */ },
@@ -817,6 +847,7 @@ static struct platform_driver ti_sci_inta_irq_domain_driver = {
 	.driver = {
 		.name = "ti-sci-inta",
 		.of_match_table = ti_sci_inta_irq_domain_of_match,
+		.pm = pm_ptr(&ti_sci_inta_pm_ops),
 	},
 };
 module_platform_driver(ti_sci_inta_irq_domain_driver);
