@@ -634,7 +634,8 @@ static void cdns_dsi_bridge_atomic_post_disable(struct drm_bridge *bridge,
 static void cdns_dsi_hs_init(struct cdns_dsi *dsi)
 {
 	struct cdns_dsi_output *output = &dsi->output;
-	u32 status;
+	u32 status, ready;
+	int i;
 
 	if (dsi->phy_initialized)
 		return;
@@ -661,6 +662,16 @@ static void cdns_dsi_hs_init(struct cdns_dsi *dsi)
 	writel(DPHY_CMN_PSO | DPHY_ALL_D_PDN | DPHY_C_PDN | DPHY_CMN_PDN |
 	       DPHY_D_RSTB(output->dev->lanes) | DPHY_C_RSTB,
 	       dsi->regs + MCTL_DPHY_CFG0);
+
+	ready = CLK_LANE_RDY;
+	for (i = 0; i < output->dev->lanes; i++)
+		ready |= DATA_LANE_RDY(i);
+
+	if (readl_poll_timeout(dsi->regs + MCTL_MAIN_STS, status,
+			       (status & ready) == ready, 100, 500000))
+		dev_err(dsi->base.dev,
+			"Timed Out: DSI-DPhy Clock and Data Lanes not ready.\n");
+
 	dsi->phy_initialized = true;
 }
 
@@ -715,7 +726,7 @@ static void cdns_dsi_bridge_atomic_pre_enable(struct drm_bridge *bridge,
 	struct drm_connector *connector;
 	unsigned long tx_byte_period;
 	struct cdns_dsi_cfg dsi_cfg;
-	u32 tmp, reg_wakeup, div, status;
+	u32 tmp, reg_wakeup, div;
 	int nlanes;
 
 	/*
@@ -754,19 +765,6 @@ static void cdns_dsi_bridge_atomic_pre_enable(struct drm_bridge *bridge,
 
 	cdns_dsi_init_link(dsi);
 	cdns_dsi_hs_init(dsi);
-
-	/*
-	 * Now that the DSI Link and DSI Phy are initialized,
-	 * wait for the CLK and Data Lanes to be ready.
-	 */
-	tmp = CLK_LANE_RDY;
-	for (int i = 0; i < nlanes; i++)
-		tmp |= DATA_LANE_RDY(i);
-
-	if (readl_poll_timeout(dsi->regs + MCTL_MAIN_STS, status,
-			       (tmp == (status & tmp)), 100, 500000))
-		dev_err(dsi->base.dev,
-			"Timed Out: DSI-DPhy Clock and Data Lanes not ready.\n");
 
 	writel(HBP_LEN(dsi_cfg.hbp) | HSA_LEN(dsi_cfg.hsa),
 	       dsi->regs + VID_HSIZE1);
@@ -1122,6 +1120,10 @@ static ssize_t cdns_dsi_transfer(struct mipi_dsi_host *host,
 
 	cdns_dsi_init_link(dsi);
 
+	/* The D-PHY rate is only known once atomic_check has run. */
+	if (dsi->output.phy_opts.mipi_dphy.hs_clk_rate)
+		cdns_dsi_hs_init(dsi);
+
 	ret = mipi_dsi_create_packet(&packet, msg);
 	if (ret)
 		goto out;
@@ -1220,7 +1222,7 @@ static ssize_t cdns_dsi_transfer(struct mipi_dsi_host *host,
 	}
 
 out:
-	pm_runtime_put(host->dev);
+	pm_runtime_put_autosuspend(host->dev);
 	return ret;
 }
 
@@ -1244,6 +1246,14 @@ static int cdns_dsi_resume(struct device *dev)
 static int cdns_dsi_suspend(struct device *dev)
 {
 	struct cdns_dsi *dsi = dev_get_drvdata(dev);
+
+	/* The reset below loses the link and PHY state. */
+	if (dsi->phy_initialized) {
+		phy_power_off(dsi->dphy);
+		phy_exit(dsi->dphy);
+		dsi->phy_initialized = false;
+	}
+	dsi->link_initialized = false;
 
 	clk_disable_unprepare(dsi->dsi_sys_clk);
 	clk_disable_unprepare(dsi->dsi_p_clk);
@@ -1340,6 +1350,9 @@ static int cdns_dsi_drm_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_disable_pclk;
 
+	/* Keep the link up across a burst of commands. */
+	pm_runtime_set_autosuspend_delay(&pdev->dev, 50);
+	pm_runtime_use_autosuspend(&pdev->dev);
 	pm_runtime_enable(&pdev->dev);
 	dsi->base.dev = &pdev->dev;
 	dsi->base.ops = &cdns_dsi_ops;
@@ -1367,6 +1380,7 @@ err_deinit_platform:
 
 err_disable_runtime_pm:
 	pm_runtime_disable(&pdev->dev);
+	pm_runtime_dont_use_autosuspend(&pdev->dev);
 
 err_disable_pclk:
 	clk_disable_unprepare(dsi->dsi_p_clk);
@@ -1384,6 +1398,7 @@ static void cdns_dsi_drm_remove(struct platform_device *pdev)
 		dsi->platform_ops->deinit(dsi);
 
 	pm_runtime_disable(&pdev->dev);
+	pm_runtime_dont_use_autosuspend(&pdev->dev);
 }
 
 static const struct of_device_id cdns_dsi_of_match[] = {

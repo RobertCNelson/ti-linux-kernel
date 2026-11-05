@@ -6,6 +6,7 @@
  *
  */
 #include <linux/clk.h>
+#include <linux/delay.h>
 #include <linux/iopoll.h>
 #include <linux/of.h>
 #include <linux/module.h>
@@ -166,6 +167,7 @@ struct sdhci_am654_data {
 #define SDHCI_AM654_QUIRK_DISABLE_HS400 BIT(2)
 #define SDHCI_AM654_QUIRK_DDR52_LIMIT_40MHZ BIT(3)
 #define SDHCI_AM654_QUIRK_ALT_HS200_OTAP BIT(4)
+#define SDHCI_AM654_QUIRK_HS400_RX_FIFO_CORRUPT BIT(5)
 };
 
 struct window {
@@ -301,6 +303,7 @@ static void sdhci_am654_set_clock(struct sdhci_host *host, unsigned int clock)
 	unsigned char timing = host->mmc->ios.timing;
 	u32 otap_del_sel;
 	u32 mask, val;
+	u16 ctrl2;
 
 	regmap_update_bits(sdhci_am654->base, PHY_CTRL1, ENDLL_MASK, 0);
 
@@ -336,6 +339,20 @@ static void sdhci_am654_set_clock(struct sdhci_host *host, unsigned int clock)
 
 		sdhci_am654_write_itapdly(sdhci_am654, sdhci_am654->itap_del_sel[timing],
 					  sdhci_am654->itap_del_ena[timing]);
+
+		if ((sdhci_am654->quirks & SDHCI_AM654_QUIRK_HS400_RX_FIFO_CORRUPT) &&
+		    (timing == MMC_TIMING_MMC_HS400)) {
+			ctrl2 = sdhci_readw(host, SDHCI_HOST_CONTROL2);
+
+			if (ctrl2 & SDHCI_CTRL_HS400) {
+				ctrl2 &= ~SDHCI_CTRL_HS400;
+				sdhci_writew(host, ctrl2, SDHCI_HOST_CONTROL2);
+				ctrl2 = sdhci_readw(host, SDHCI_HOST_CONTROL2);
+				ctrl2 |= SDHCI_CTRL_HS400;
+				sdhci_writew(host, ctrl2, SDHCI_HOST_CONTROL2);
+				ndelay(300);
+			}
+		}
 	} else {
 		sdhci_am654_setup_delay_chain(sdhci_am654, timing);
 		sdhci_am654->dll_enable = false;
@@ -966,6 +983,12 @@ static const struct soc_device_attribute sdhci_am654_alt_otap_devices[] = {
 	{ /* sentinel */ }
 };
 
+static const struct soc_device_attribute sdhci_am654_hs400_rx_fifo_corrupt[] = {
+	{ .family = "AM62PX" },
+	{ .family = "J722S" },
+	{ /* sentinel */ }
+};
+
 static const struct of_device_id sdhci_am654_of_match[] = {
 	{
 		.compatible = "ti,am654-sdhci-5.1",
@@ -1060,6 +1083,10 @@ static int sdhci_am654_probe(struct platform_device *pdev)
 	if (drvdata == &sdhci_j721e_8bit_drvdata &&
 	    soc_device_match(sdhci_am654_alt_otap_devices))
 		sdhci_am654->quirks |= SDHCI_AM654_QUIRK_ALT_HS200_OTAP;
+
+	soc = soc_device_match(sdhci_am654_hs400_rx_fifo_corrupt);
+	if (soc)
+		sdhci_am654->quirks |= SDHCI_AM654_QUIRK_HS400_RX_FIFO_CORRUPT;
 
 	host->mmc_host_ops.start_signal_voltage_switch = sdhci_am654_start_signal_voltage_switch;
 	host->mmc_host_ops.execute_tuning = sdhci_am654_execute_tuning;

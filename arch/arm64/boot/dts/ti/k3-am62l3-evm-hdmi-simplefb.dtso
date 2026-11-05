@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+/**
+ * DT Overlay to add simplefb node for HDMI display.
+ *
+ * This overlay adds the simple-framebuffer node with the appropriate
+ * power-domains and clocks for HDMI display on AM62L3 EVM.
+ *
+ * Copyright (C) 2026 Texas Instruments Incorporated - https://www.ti.com/
+ */
+
+/dts-v1/;
+/plugin/;
+
+&{/chosen} {
+	framebuffer0: framebuffer@0 {
+		compatible = "simple-framebuffer";
+		power-domains = <&scmi_pds 39>;   /* DSS only (HDMI bridge is external) */
+		clocks = <&scmi_clk 162>,         /* DSS fck */
+			 <&scmi_clk 161>;         /* DSS vp1 */
+		display = <&dss>;
+		status = "disabled";
+		bootph-all;
+	};
+};

@@ -354,29 +354,14 @@ struct cqspi_driver_platdata {
 #define CQSPI_PHY_INIT_RD			1
 #define CQSPI_PHY_MAX_RD			4
 #define CQSPI_PHY_MAX_DELAY			127
-#define CQSPI_PHY_DDR_SEARCH_STEP		4
-#define CQSPI_PHY_MAX_RX			63
-#define CQSPI_PHY_MAX_TX			63
-#define CQSPI_PHY_TX_LOOKUP_LOW_START		28
-#define CQSPI_PHY_TX_LOOKUP_LOW_END		48
-#define CQSPI_PHY_TX_LOOKUP_HIGH_START		60
-#define CQSPI_PHY_TX_LOOKUP_HIGH_END		96
-#define CQSPI_PHY_RX_LOW_SEARCH_START		0
-#define CQSPI_PHY_RX_LOW_SEARCH_END		40
-#define CQSPI_PHY_RX_HIGH_SEARCH_START		24
-#define CQSPI_PHY_RX_HIGH_SEARCH_END		127
-#define CQSPI_PHY_TX_LOW_SEARCH_START		0
-#define CQSPI_PHY_TX_LOW_SEARCH_END		64
-#define CQSPI_PHY_TX_HIGH_SEARCH_START		78
-#define CQSPI_PHY_TX_HIGH_SEARCH_END		127
-#define CQSPI_PHY_SEARCH_OFFSET			8
-
-#define CQSPI_PHY_DEFAULT_TEMP			45
-#define CQSPI_PHY_MIN_TEMP			-45
-#define CQSPI_PHY_MAX_TEMP			130
-#define CQSPI_PHY_MID_TEMP			(CQSPI_PHY_MIN_TEMP +	\
-						 ((CQSPI_PHY_MAX_TEMP -	\
-						   CQSPI_PHY_MIN_TEMP) / 2))
+#define CQSPI_PHY_DDR_RADIUS			3
+#define CQSPI_PHY_DDR_MIN_PASS_TAPS		5
+#define CQSPI_PHY_DDR_DIAG_SHIFT		4
+#define CQSPI_PHY_DDR_MAX_DIAG_SHIFT		48
+#define CQSPI_PHY_DDR_CONSEC_FAIL		3
+#define CQSPI_PHY_DDR_CONSEC_PASS		3
+#define CQSPI_PHY_DDR_RD_STEP			4
+#define CQSPI_PHY_RD_INVALID			U8_MAX
 
 /*
  * PHY tuning pattern for calibrating read data capture delay. This 128-byte
@@ -2115,32 +2100,6 @@ static void cqspi_phy_post_config(struct cqspi_st *cqspi,
 	writel(reg, reg_base + CQSPI_REG_RD_INSTR);
 }
 
-static int cqspi_find_rx_low_ddr(struct cqspi_flash_pdata *f_pdata,
-				 struct spi_mem *mem, struct phy_setting *phy)
-{
-	struct device *dev = &f_pdata->cqspi->pdev->dev;
-	int ret;
-
-	do {
-		phy->rx = CQSPI_PHY_RX_LOW_SEARCH_START;
-		do {
-			ret = cqspi_phy_apply_setting(f_pdata, phy);
-			if (!ret) {
-				ret = cqspi_phy_check_pattern(f_pdata, mem);
-				if (!ret)
-					return 0;
-			}
-
-			phy->rx += CQSPI_PHY_DDR_SEARCH_STEP;
-		} while (phy->rx <= CQSPI_PHY_RX_LOW_SEARCH_END);
-
-		phy->read_delay++;
-	} while (phy->read_delay <= CQSPI_PHY_MAX_RD);
-
-	dev_dbg(dev, "Unable to find RX low\n");
-	return -ENOENT;
-}
-
 static int cqspi_find_rx_low_sdr(struct cqspi_flash_pdata *f_pdata,
 				 struct spi_mem *mem, struct phy_setting *phy)
 {
@@ -2159,32 +2118,6 @@ static int cqspi_find_rx_low_sdr(struct cqspi_flash_pdata *f_pdata,
 	} while (phy->rx < CQSPI_PHY_MAX_DELAY - 1);
 
 	dev_dbg(dev, "Unable to find RX low\n");
-	return -ENOENT;
-}
-
-static int cqspi_find_rx_high_ddr(struct cqspi_flash_pdata *f_pdata,
-				  struct spi_mem *mem, struct phy_setting *phy)
-{
-	struct device *dev = &f_pdata->cqspi->pdev->dev;
-	int ret;
-
-	do {
-		phy->rx = CQSPI_PHY_RX_HIGH_SEARCH_END;
-		do {
-			ret = cqspi_phy_apply_setting(f_pdata, phy);
-			if (!ret) {
-				ret = cqspi_phy_check_pattern(f_pdata, mem);
-				if (!ret)
-					return 0;
-			}
-
-			phy->rx -= CQSPI_PHY_DDR_SEARCH_STEP;
-		} while (phy->rx >= CQSPI_PHY_RX_HIGH_SEARCH_START);
-
-		phy->read_delay--;
-	} while (phy->read_delay >= CQSPI_PHY_INIT_RD);
-
-	dev_dbg(dev, "Unable to find RX high\n");
 	return -ENOENT;
 }
 
@@ -2210,167 +2143,573 @@ static int cqspi_find_rx_high_sdr(struct cqspi_flash_pdata *f_pdata,
 	return -ENOENT;
 }
 
-static int cqspi_find_tx_low_ddr(struct cqspi_flash_pdata *f_pdata,
-				 struct spi_mem *mem, struct phy_setting *phy)
+static int cqspi_phy_check_consecutive_ddr(struct cqspi_flash_pdata *f_pdata,
+					   struct spi_mem *mem,
+					   struct phy_setting start, int target,
+					   bool match_pass, bool upward)
 {
-	struct device *dev = &f_pdata->cqspi->pdev->dev;
+	struct phy_setting probe = start;
+	int step = upward ? 1 : -1;
+	int count = 1;
 	int ret;
 
-	do {
-		phy->tx = CQSPI_PHY_TX_LOW_SEARCH_START;
-		do {
-			ret = cqspi_phy_apply_setting(f_pdata, phy);
-			if (!ret) {
-				ret = cqspi_phy_check_pattern(f_pdata, mem);
-				if (!ret)
-					return 0;
-			}
+	while (count < target) {
+		if (upward ? (probe.tx >= CQSPI_PHY_MAX_DELAY ||
+			      probe.rx >= CQSPI_PHY_MAX_DELAY) :
+			     (probe.tx == 0 || probe.rx == 0))
+			break;
+		probe.tx += step;
+		probe.rx += step;
+		ret = cqspi_phy_apply_setting(f_pdata, &probe);
+		if (!ret)
+			ret = cqspi_phy_check_pattern(f_pdata, mem);
+		if ((ret == 0) == match_pass)
+			count++;
+		else
+			break;
+	}
 
-			phy->tx += CQSPI_PHY_DDR_SEARCH_STEP;
-		} while (phy->tx <= CQSPI_PHY_TX_LOW_SEARCH_END);
-
-		phy->read_delay++;
-	} while (phy->read_delay <= CQSPI_PHY_MAX_RD);
-
-	dev_dbg(dev, "Unable to find TX low\n");
-	return -ENOENT;
+	return count;
 }
 
-static int cqspi_find_tx_high_ddr(struct cqspi_flash_pdata *f_pdata,
-				  struct spi_mem *mem, struct phy_setting *phy)
+static void cqspi_phy_find_next_match_ddr(struct cqspi_flash_pdata *f_pdata,
+					  struct spi_mem *mem,
+					  struct phy_setting *search,
+					  const struct phy_setting *limit,
+					  bool match_pass, bool upward)
 {
-	struct device *dev = &f_pdata->cqspi->pdev->dev;
+	int step = upward ? 1 : -1;
 	int ret;
 
-	do {
-		phy->tx = CQSPI_PHY_TX_HIGH_SEARCH_END;
-		do {
-			ret = cqspi_phy_apply_setting(f_pdata, phy);
-			if (!ret) {
-				ret = cqspi_phy_check_pattern(f_pdata, mem);
-				if (!ret)
-					return 0;
-			}
-
-			phy->tx -= CQSPI_PHY_DDR_SEARCH_STEP;
-		} while (phy->tx >= CQSPI_PHY_TX_HIGH_SEARCH_START);
-
-		phy->read_delay--;
-	} while (phy->read_delay >= CQSPI_PHY_INIT_RD);
-
-	dev_dbg(dev, "Unable to find TX high\n");
-	return -ENOENT;
+	while (upward ? (search->tx < limit->tx && search->rx < limit->rx) :
+			(search->tx > limit->tx && search->rx > limit->rx)) {
+		search->tx += step;
+		search->rx += step;
+		ret = cqspi_phy_apply_setting(f_pdata, search);
+		if (!ret)
+			ret = cqspi_phy_check_pattern(f_pdata, mem);
+		if ((ret == 0) == match_pass)
+			break;
+	}
 }
 
-static int cqspi_phy_find_gaplow_ddr(struct cqspi_flash_pdata *f_pdata,
-				     struct spi_mem *mem,
-				     struct phy_setting *bottomleft,
-				     struct phy_setting *topright,
-				     struct phy_setting *gaplow)
+static void cqspi_phy_find_biggest_line_ddr(struct cqspi_flash_pdata *f_pdata,
+					    struct spi_mem *mem,
+					    struct phy_setting *start,
+					    struct phy_setting *end,
+					    bool upward)
 {
-	struct phy_setting left, right, mid;
+	struct phy_setting probe = *start;
+	struct phy_setting best_start = *start;
+	int step = upward ? 1 : -1;
+	int cur_len = 1, best_len = 1;
 	int ret;
 
-	left = *bottomleft;
-	right = *topright;
+	for (;;) {
+		if (!upward && (probe.tx == 0 || probe.rx == 0))
+			break;
+		probe.tx += step;
+		probe.rx += step;
 
-	mid.tx = left.tx + ((right.tx - left.tx) / 2);
-	mid.rx = left.rx + ((right.rx - left.rx) / 2);
-	mid.read_delay = left.read_delay;
+		if (upward ? (probe.tx > end->tx || probe.rx > end->rx) :
+			     (probe.tx < end->tx || probe.rx < end->rx)) {
+			/* Overshot the search limit; rewind to the last tested tap */
+			probe.tx -= step;
+			probe.rx -= step;
+			break;
+		}
 
-	do {
-		ret = cqspi_phy_apply_setting(f_pdata, &mid);
+		ret = cqspi_phy_apply_setting(f_pdata, &probe);
 		if (!ret)
 			ret = cqspi_phy_check_pattern(f_pdata, mem);
 
-		if (ret) {
-			/* The pattern was not found. Go to the lower half. */
-			right.tx = mid.tx;
-			right.rx = mid.rx;
-
-			mid.tx = left.tx + ((mid.tx - left.tx) / 2);
-			mid.rx = left.rx + ((mid.rx - left.rx) / 2);
+		if (!ret) {
+			cur_len++;
 		} else {
-			/* The pattern was found. Go to the upper half. */
-			left.tx = mid.tx;
-			left.rx = mid.rx;
-
-			mid.tx = mid.tx + ((right.tx - mid.tx) / 2);
-			mid.rx = mid.rx + ((right.rx - mid.rx) / 2);
+			if (cur_len > best_len) {
+				best_len = cur_len;
+				best_start.tx = probe.tx - step * cur_len;
+				best_start.rx = probe.rx - step * cur_len;
+			}
+			cur_len = 0;
+			cqspi_phy_find_next_match_ddr(f_pdata, mem, &probe, end,
+						      true, upward);
+			if (upward ? (probe.tx <= end->tx &&
+				      probe.rx <= end->rx) :
+				     (probe.tx >= end->tx &&
+				      probe.rx >= end->rx))
+				cur_len = 1;
 		}
+	}
 
-		/* Break the loop if the window has closed. */
-	} while ((right.tx - left.tx >= 2) && (right.rx - left.rx >= 2));
+	if (cur_len > best_len) {
+		best_len = cur_len;
+		best_start.tx = probe.tx - step * (cur_len - 1);
+		best_start.rx = probe.rx - step * (cur_len - 1);
+	}
 
-	*gaplow = mid;
-	return 0;
+	start->tx = best_start.tx;
+	start->rx = best_start.rx;
+	end->tx = start->tx + step * (best_len - 1);
+	end->rx = start->rx + step * (best_len - 1);
 }
 
-static int cqspi_phy_find_gaphigh_ddr(struct cqspi_flash_pdata *f_pdata,
+static int cqspi_phy_rd_delay_valid_ddr(struct cqspi_flash_pdata *f_pdata,
+					struct spi_mem *mem,
+					struct phy_setting probe,
+					struct phy_setting end)
+{
+	int ret = -ENOENT;
+
+	while ((int)probe.tx <= (int)end.tx - CQSPI_PHY_DDR_RD_STEP &&
+	       (int)probe.rx <= (int)end.rx - CQSPI_PHY_DDR_RD_STEP && ret) {
+		ret = cqspi_phy_apply_setting(f_pdata, &probe);
+		if (!ret)
+			ret = cqspi_phy_check_pattern(f_pdata, mem);
+		probe.tx += CQSPI_PHY_DDR_RD_STEP;
+		probe.rx += CQSPI_PHY_DDR_RD_STEP;
+	}
+
+	return ret;
+}
+
+static int cqspi_phy_find_valid_rd_delays_ddr(struct cqspi_flash_pdata *f_pdata,
+					      struct spi_mem *mem,
+					      struct phy_setting diag_start,
+					      struct phy_setting diag_end,
+					      u8 *min_rd, u8 *max_rd)
+{
+	struct phy_setting probe;
+	u8 read_delay;
+
+	*min_rd = CQSPI_PHY_RD_INVALID;
+	*max_rd = CQSPI_PHY_RD_INVALID;
+
+	for (read_delay = CQSPI_PHY_INIT_RD; read_delay <= CQSPI_PHY_MAX_RD;
+	     read_delay++) {
+		probe = diag_start;
+		probe.read_delay = read_delay;
+		if (!cqspi_phy_rd_delay_valid_ddr(f_pdata, mem, probe,
+						  diag_end)) {
+			if (*min_rd == CQSPI_PHY_RD_INVALID)
+				*min_rd = read_delay;
+			*max_rd = read_delay;
+		}
+	}
+
+	return (*min_rd == CQSPI_PHY_RD_INVALID) ? -ENOENT : 0;
+}
+
+static int cqspi_phy_check_circle_ddr(struct cqspi_flash_pdata *f_pdata,
 				      struct spi_mem *mem,
-				      struct phy_setting *bottomleft,
-				      struct phy_setting *topright,
-				      struct phy_setting *gaphigh)
+				      const struct phy_setting *center)
 {
-	struct phy_setting left, right, mid;
-	int ret;
+	int radius = CQSPI_PHY_DDR_RADIUS;
+	int radius_sq = radius * radius;
+	int rx_min = (int)center->rx - radius;
+	int rx_max = (int)center->rx + radius;
+	int tx_min = (int)center->tx - radius;
+	int tx_max = (int)center->tx + radius;
+	struct phy_setting probe;
+	int rx_delta, tx_delta;
+	int rx, tx, ret;
 
-	left = *bottomleft;
-	right = *topright;
+	if (rx_max > CQSPI_PHY_MAX_DELAY || rx_min < 0 ||
+	    tx_max > CQSPI_PHY_MAX_DELAY || tx_min < 0)
+		return -ENOENT;
 
-	mid.tx = left.tx + ((right.tx - left.tx) / 2);
-	mid.rx = left.rx + ((right.rx - left.rx) / 2);
-	mid.read_delay = right.read_delay;
-
-	do {
-		ret = cqspi_phy_apply_setting(f_pdata, &mid);
-		if (!ret)
-			ret = cqspi_phy_check_pattern(f_pdata, mem);
-
-		if (ret) {
-			/* The pattern was not found. Go to the upper half. */
-			left.tx = mid.tx;
-			left.rx = mid.rx;
-
-			mid.tx = mid.tx + ((right.tx - mid.tx) / 2);
-			mid.rx = mid.rx + ((right.rx - mid.rx) / 2);
-		} else {
-			/* The pattern was found. Go to the lower half. */
-			right.tx = mid.tx;
-			right.rx = mid.rx;
-
-			mid.tx = left.tx + ((mid.tx - left.tx) / 2);
-			mid.rx = left.rx + ((mid.rx - left.rx) / 2);
+	/* Bottom-left quadrant */
+	for (rx = rx_min; rx <= (int)center->rx; rx++) {
+		rx_delta = rx - (int)center->rx;
+		for (tx = tx_min; tx <= (int)center->tx; tx++) {
+			if (rx == (int)center->rx && tx == (int)center->tx)
+				continue;
+			tx_delta = tx - (int)center->tx;
+			if (rx_delta * rx_delta + tx_delta * tx_delta >
+			    radius_sq)
+				continue;
+			probe = (struct phy_setting){
+				.rx = rx,
+				.tx = tx,
+				.read_delay = center->read_delay
+			};
+			ret = cqspi_phy_apply_setting(f_pdata, &probe);
+			if (!ret)
+				ret = cqspi_phy_check_pattern(f_pdata, mem);
+			if (ret)
+				return ret;
 		}
+	}
 
-		/* Break the loop if the window has closed. */
-	} while ((right.tx - left.tx >= 2) && (right.rx - left.rx >= 2));
+	/* Top-right quadrant */
+	for (rx = (int)center->rx; rx <= rx_max; rx++) {
+		rx_delta = rx - (int)center->rx;
+		for (tx = (int)center->tx; tx <= tx_max; tx++) {
+			if (rx == (int)center->rx && tx == (int)center->tx)
+				continue;
+			tx_delta = tx - (int)center->tx;
+			if (rx_delta * rx_delta + tx_delta * tx_delta >
+			    radius_sq)
+				continue;
+			probe = (struct phy_setting){
+				.rx = rx,
+				.tx = tx,
+				.read_delay = center->read_delay
+			};
+			ret = cqspi_phy_apply_setting(f_pdata, &probe);
+			if (!ret)
+				ret = cqspi_phy_check_pattern(f_pdata, mem);
+			if (ret)
+				return ret;
+		}
+	}
 
-	*gaphigh = mid;
 	return 0;
 }
 
-static int cqspi_get_temp(int *temp)
+static int cqspi_phy_find_tuning_point_ddr(struct cqspi_flash_pdata *f_pdata,
+					   struct spi_mem *mem,
+					   struct phy_setting *midpt)
 {
-	/*
-	 * TODO: Implement temperature sensor reading for DDR PHY tuning.
-	 *
-	 * The DDR tuning algorithm uses temperature compensation to adjust
-	 * the final tuning point based on current die temperature. The valid
-	 * timing region shifts with temperature variations, and this offset
-	 * helps maintain optimal settings across the operating range
-	 * (-45Â°C to 130Â°C).
-	 *
-	 * This function should:
-	 * - Read the SoC die temperature from the thermal sensor
-	 * - Populate the temp parameter with temperature in degrees Celsius
-	 * - Return 0 on success, negative error code on failure
-	 *
-	 * Until implemented, the tuning algorithm falls back to assuming
-	 * room temperature (45Â°C) for temperature compensation calculations.
-	 */
+	struct phy_setting top_left = *midpt, bot_right = *midpt;
+	struct phy_setting anti_diag_mid;
+	u8 prev_tx, prev_rx;
+	int ret;
 
-	return -EOPNOTSUPP;
+	/* Walk anti-diagonal top-left (tx--, rx++) until fail */
+	while (top_left.tx > 0 && top_left.rx < CQSPI_PHY_MAX_DELAY) {
+		prev_tx = top_left.tx;
+		prev_rx = top_left.rx;
+		top_left.tx--;
+		top_left.rx++;
+		ret = cqspi_phy_apply_setting(f_pdata, &top_left);
+		if (!ret)
+			ret = cqspi_phy_check_pattern(f_pdata, mem);
+		if (ret) {
+			top_left.tx = prev_tx;
+			top_left.rx = prev_rx;
+			break;
+		}
+	}
+
+	/* Walk anti-diagonal bottom-right (tx++, rx--) until fail */
+	while (bot_right.tx < CQSPI_PHY_MAX_DELAY && bot_right.rx > 0) {
+		prev_tx = bot_right.tx;
+		prev_rx = bot_right.rx;
+		bot_right.tx++;
+		bot_right.rx--;
+		ret = cqspi_phy_apply_setting(f_pdata, &bot_right);
+		if (!ret)
+			ret = cqspi_phy_check_pattern(f_pdata, mem);
+		if (ret) {
+			bot_right.tx = prev_tx;
+			bot_right.rx = prev_rx;
+			break;
+		}
+	}
+
+	/*
+	 * Anti-diagonal span in taps. On this axis |delta_tx| == |delta_rx|
+	 * for every step, so the tap count is the tx coordinate difference.
+	 */
+	if ((int)bot_right.tx - (int)top_left.tx < CQSPI_PHY_DDR_MIN_PASS_TAPS)
+		return -ENOENT;
+
+	midpt->tx = (top_left.tx + bot_right.tx) / 2;
+	midpt->rx = (top_left.rx + bot_right.rx) / 2;
+	anti_diag_mid = *midpt;
+
+	ret = cqspi_phy_check_circle_ddr(f_pdata, mem, midpt);
+	if (!ret)
+		return 0;
+
+	/*
+	 * Circle check failed at the anti-diagonal midpoint. Both boundary
+	 * distances from anti_diag_mid are equal (or differ by one tap for
+	 * odd spans), so try toward top-left first, then toward bottom-right.
+	 */
+	midpt->tx = (anti_diag_mid.tx + top_left.tx) / 2;
+	midpt->rx = (anti_diag_mid.rx + top_left.rx) / 2;
+	ret = cqspi_phy_check_circle_ddr(f_pdata, mem, midpt);
+	if (!ret)
+		return 0;
+
+	midpt->tx = (anti_diag_mid.tx + bot_right.tx) / 2;
+	midpt->rx = (anti_diag_mid.rx + bot_right.rx) / 2;
+	return cqspi_phy_check_circle_ddr(f_pdata, mem, midpt);
+}
+
+static int cqspi_phy_search_diagonal_ddr(struct cqspi_flash_pdata *f_pdata,
+					 struct spi_mem *mem,
+					 struct phy_setting *best,
+					 struct phy_setting diag_start,
+					 struct phy_setting diag_end)
+{
+	struct phy_setting gap_start = { .read_delay = CQSPI_PHY_RD_INVALID };
+	struct phy_setting gap_end = { .read_delay = CQSPI_PHY_RD_INVALID };
+	struct phy_setting midpoint = { .read_delay = CQSPI_PHY_RD_INVALID };
+	struct phy_setting pass_start, pass_end;
+	struct phy_setting low_midpt, high_midpt;
+	struct phy_setting *first, *second;
+	struct device *dev = &f_pdata->cqspi->pdev->dev;
+	int pass_len, low_len, high_len;
+	u8 min_rd, max_rd;
+	int run, ret;
+
+	ret = cqspi_phy_find_valid_rd_delays_ddr(f_pdata, mem, diag_start,
+						 diag_end, &min_rd, &max_rd);
+	if (ret)
+		return ret;
+
+	dev_dbg(dev, "DDR PHY diagonal: valid read delays %u..%u\n", min_rd,
+		max_rd);
+
+	/* Refine pass_start: walk forward at min_rd to first passing point */
+	pass_start = diag_start;
+	pass_start.read_delay = min_rd;
+	for (;;) {
+		ret = cqspi_phy_apply_setting(f_pdata, &pass_start);
+		if (!ret)
+			ret = cqspi_phy_check_pattern(f_pdata, mem);
+		if (!ret)
+			break;
+		if (pass_start.tx >= CQSPI_PHY_MAX_DELAY ||
+		    pass_start.rx >= CQSPI_PHY_MAX_DELAY)
+			break;
+		pass_start.tx++;
+		pass_start.rx++;
+	}
+
+	/* Refine pass_end: walk backward at max_rd to first passing point */
+	pass_end = diag_end;
+	pass_end.read_delay = max_rd;
+	for (;;) {
+		ret = cqspi_phy_apply_setting(f_pdata, &pass_end);
+		if (!ret)
+			ret = cqspi_phy_check_pattern(f_pdata, mem);
+		if (!ret)
+			break;
+		if (pass_end.tx == 0 || pass_end.rx == 0)
+			break;
+		pass_end.tx--;
+		pass_end.rx--;
+	}
+
+	if (pass_start.read_delay == pass_end.read_delay) {
+		/* Single region: find the longest run, take its midpoint */
+		cqspi_phy_find_biggest_line_ddr(f_pdata, mem, &pass_start,
+						&pass_end, true);
+
+		/* tx and rx increase equally on the diagonal */
+		pass_len = (int)pass_end.tx - (int)pass_start.tx;
+		dev_dbg(dev, "DDR PHY diagonal: single region, %d taps\n",
+			pass_len);
+		if (pass_len < CQSPI_PHY_DDR_MIN_PASS_TAPS)
+			return -ENOENT;
+
+		midpoint.tx = (pass_start.tx + pass_end.tx) / 2;
+		midpoint.rx = (pass_start.rx + pass_end.rx) / 2;
+		midpoint.read_delay = pass_start.read_delay;
+
+		ret = cqspi_phy_find_tuning_point_ddr(f_pdata, mem, &midpoint);
+		if (!ret)
+			*best = midpoint;
+		return ret;
+	}
+
+	/* Dual regions: locate bottom passing region from pass_start upward */
+	do {
+		run = cqspi_phy_check_consecutive_ddr(f_pdata, mem, pass_start,
+						      CQSPI_PHY_DDR_CONSEC_PASS,
+						      true, true);
+		if (run < CQSPI_PHY_DDR_CONSEC_PASS) {
+			pass_start.tx += run + 1;
+			pass_start.rx += run + 1;
+			cqspi_phy_find_next_match_ddr(f_pdata, mem, &pass_start,
+						      &pass_end, true, true);
+		}
+	} while (run < CQSPI_PHY_DDR_CONSEC_PASS &&
+		 pass_start.tx < pass_end.tx);
+
+	if (run < CQSPI_PHY_DDR_CONSEC_PASS) {
+		pass_start.read_delay = CQSPI_PHY_RD_INVALID;
+	} else {
+		/*
+		 * Walk past confirmed region to find gap start boundary.
+		 * Clamp the jump so tx/rx never step past CQSPI_PHY_MAX_DELAY.
+		 */
+		int off = CQSPI_PHY_DDR_CONSEC_PASS + 1;
+
+		if (pass_start.tx > CQSPI_PHY_MAX_DELAY - off)
+			off = CQSPI_PHY_MAX_DELAY - pass_start.tx;
+		if (pass_start.rx > CQSPI_PHY_MAX_DELAY - off)
+			off = CQSPI_PHY_MAX_DELAY - pass_start.rx;
+
+		gap_start.rx = pass_start.rx + off;
+		gap_start.tx = pass_start.tx + off;
+		gap_start.read_delay = pass_start.read_delay;
+
+		for (;;) {
+			ret = cqspi_phy_apply_setting(f_pdata, &gap_start);
+			if (!ret)
+				ret = cqspi_phy_check_pattern(f_pdata, mem);
+			if (ret)
+				break;
+			if (gap_start.tx >= CQSPI_PHY_MAX_DELAY ||
+			    gap_start.rx >= CQSPI_PHY_MAX_DELAY)
+				break;
+			gap_start.tx++;
+			gap_start.rx++;
+		}
+
+		do {
+			run = cqspi_phy_check_consecutive_ddr(
+				f_pdata, mem, gap_start,
+				CQSPI_PHY_DDR_CONSEC_FAIL, false, true);
+			if (run < CQSPI_PHY_DDR_CONSEC_FAIL) {
+				gap_start.tx += run + 1;
+				gap_start.rx += run + 1;
+				cqspi_phy_find_next_match_ddr(f_pdata, mem,
+							      &gap_start,
+							      &pass_end, false,
+							      true);
+			}
+		} while (run < CQSPI_PHY_DDR_CONSEC_FAIL &&
+			 gap_start.tx < pass_end.tx);
+
+		/* Narrow pass_start..gap_start to the best passing run */
+		cqspi_phy_find_biggest_line_ddr(f_pdata, mem, &pass_start,
+						&gap_start, true);
+	}
+
+	/* Locate top passing region from pass_end downward */
+	do {
+		run = cqspi_phy_check_consecutive_ddr(f_pdata, mem, pass_end,
+						      CQSPI_PHY_DDR_CONSEC_PASS,
+						      true, false);
+		if (run < CQSPI_PHY_DDR_CONSEC_PASS) {
+			pass_end.tx -= run + 1;
+			pass_end.rx -= run + 1;
+			cqspi_phy_find_next_match_ddr(f_pdata, mem, &pass_end,
+						      &pass_start, true, false);
+		}
+	} while (run < CQSPI_PHY_DDR_CONSEC_PASS &&
+		 pass_end.tx >= (pass_start.tx + CQSPI_PHY_DDR_CONSEC_PASS));
+
+	if (run < CQSPI_PHY_DDR_CONSEC_PASS) {
+		pass_end.read_delay = CQSPI_PHY_RD_INVALID;
+	} else {
+		/*
+		 * Walk past confirmed region to find gap end boundary.
+		 * Clamp the jump so tx/rx never step below zero.
+		 */
+		int off = CQSPI_PHY_DDR_CONSEC_PASS + 1;
+
+		if (pass_end.tx < off)
+			off = pass_end.tx;
+		if (pass_end.rx < off)
+			off = pass_end.rx;
+
+		gap_end.rx = pass_end.rx - off;
+		gap_end.tx = pass_end.tx - off;
+		gap_end.read_delay = pass_end.read_delay;
+
+		for (;;) {
+			ret = cqspi_phy_apply_setting(f_pdata, &gap_end);
+			if (!ret)
+				ret = cqspi_phy_check_pattern(f_pdata, mem);
+			if (ret)
+				break;
+			if (gap_end.tx == 0 || gap_end.rx == 0)
+				break;
+			gap_end.tx--;
+			gap_end.rx--;
+		}
+
+		do {
+			run = cqspi_phy_check_consecutive_ddr(
+				f_pdata, mem, gap_end,
+				CQSPI_PHY_DDR_CONSEC_FAIL, false, false);
+			if (run < CQSPI_PHY_DDR_CONSEC_FAIL) {
+				gap_end.tx -= run + 1;
+				gap_end.rx -= run + 1;
+				cqspi_phy_find_next_match_ddr(f_pdata, mem,
+							      &gap_end,
+							      &pass_start,
+							      false, false);
+			}
+		} while (run < CQSPI_PHY_DDR_CONSEC_FAIL &&
+			 gap_end.tx >= pass_start.tx);
+
+		/* Narrow gap_end..pass_end to the best passing run */
+		cqspi_phy_find_biggest_line_ddr(f_pdata, mem, &pass_end,
+						&gap_end, false);
+	}
+
+	if (pass_start.read_delay == CQSPI_PHY_RD_INVALID &&
+	    pass_end.read_delay == CQSPI_PHY_RD_INVALID)
+		return -ENOENT;
+
+	low_len = 0;
+	high_len = 0;
+
+	if (pass_start.read_delay != CQSPI_PHY_RD_INVALID)
+		low_len = (int)gap_start.tx - (int)pass_start.tx;
+
+	if (pass_end.read_delay != CQSPI_PHY_RD_INVALID)
+		high_len = (int)pass_end.tx - (int)gap_end.tx;
+
+	dev_dbg(dev,
+		"DDR PHY diagonal: dual region, low=%d taps, high=%d taps\n",
+		low_len, high_len);
+
+	if (low_len < CQSPI_PHY_DDR_MIN_PASS_TAPS &&
+	    high_len < CQSPI_PHY_DDR_MIN_PASS_TAPS)
+		return -ENOENT;
+
+	low_midpt = (struct phy_setting){ .read_delay = CQSPI_PHY_RD_INVALID };
+	high_midpt = (struct phy_setting){ .read_delay = CQSPI_PHY_RD_INVALID };
+
+	if (high_len >= CQSPI_PHY_DDR_MIN_PASS_TAPS) {
+		high_midpt.rx = (pass_end.rx + gap_end.rx) / 2;
+		high_midpt.tx = (pass_end.tx + gap_end.tx) / 2;
+		high_midpt.read_delay = pass_end.read_delay;
+	}
+
+	if (low_len >= CQSPI_PHY_DDR_MIN_PASS_TAPS) {
+		low_midpt.rx = (pass_start.rx + gap_start.rx) / 2;
+		low_midpt.tx = (pass_start.tx + gap_start.tx) / 2;
+		low_midpt.read_delay = pass_start.read_delay;
+	}
+
+	/* Try the larger region first; fall back to the smaller one */
+	if (high_len >= low_len) {
+		first = high_midpt.read_delay != CQSPI_PHY_RD_INVALID ?
+				&high_midpt :
+				NULL;
+		second = low_midpt.read_delay != CQSPI_PHY_RD_INVALID ?
+				 &low_midpt :
+				 NULL;
+	} else {
+		first = low_midpt.read_delay != CQSPI_PHY_RD_INVALID ?
+				&low_midpt :
+				NULL;
+		second = high_midpt.read_delay != CQSPI_PHY_RD_INVALID ?
+				 &high_midpt :
+				 NULL;
+	}
+
+	if (first && !cqspi_phy_find_tuning_point_ddr(f_pdata, mem, first)) {
+		*best = *first;
+		return 0;
+	}
+
+	if (second && !cqspi_phy_find_tuning_point_ddr(f_pdata, mem, second)) {
+		*best = *second;
+		return 0;
+	}
+
+	return -ENOENT;
 }
 
 static inline void cqspi_phy_reset_setting(struct phy_setting *phy)
@@ -2383,805 +2722,79 @@ static int cqspi_phy_tuning_ddr(struct cqspi_flash_pdata *f_pdata,
 {
 	struct cqspi_st *cqspi = f_pdata->cqspi;
 	struct device *dev = &cqspi->pdev->dev;
-	struct phy_setting rxlow, rxhigh, txlow, txhigh;
-	struct phy_setting srxlow, srxhigh;
-	struct phy_setting bottomleft, topright, searchpoint;
-	struct phy_setting gaplow, gaphigh;
-	struct phy_setting backuppoint, backupcornerpoint;
-	int ret, tmp;
-	bool primary = 1, secondary = 1;
-
-	/*
-	 * DDR tuning: 2D search across RX and TX delays for optimal timing.
-	 *
-	 * Algorithm: Find RX boundaries (rxlow/rxhigh) using TX window search,
-	 * find TX boundaries (txlow/txhigh) at fixed RX, define valid region,
-	 * locate gaps via binary search, select final point with temperature
-	 * compensation.
-	 *
-	 *              rx
-	 *          127 ^
-	 *              |                                 topright
-	 *              |                                    *
-	 *              |       xxxxx     ++++++++++++++++++++
-	 *              |       xxxxxx     +++++++++++++++++++
-	 *              |       xxxxxxx     ++++++++++++++++++
-	 *              |       xxxxxxxx     +++++++++++++++++
-	 *              |       xxxxxxxxx     ++++++++++++++++
-	 *              |       xxxxxxxxxx     +++++++++++++++
-	 *              |       xxxxxxxxxxx     ++++++++++++++
-	 *              |       xxxxxxxxxxxx     +++++++++++++
-	 *              |       xxxxxxxxxxxxx     ++++++++++++
-	 *              |       xxxxxxxxxxxxxx     +++++++++++
-	 *              |       xxxxxxxxxxxxxxx     ++++++++++
-	 *              |       xxxxxxxxxxxxxxxx     +++++++++
-	 *              |       xxxxxxxxxxxxxxxxx     ++++++++
-	 *              |       xxxxxxxxxxxxxxxxxx     +++++++
-	 *              |       *
-	 *              |  bottomleft
-	 *              -----------------------------------------> tx
-	 *              0                                      127
-	 */
+	struct phy_setting diag_start, diag_end;
+	struct phy_setting tuning_pt = { 0 };
+	int shift, ret;
 
 	f_pdata->use_phy = true;
 
-	/* Golden rxlow search: Find lower RX boundary using TX window sweep */
-
-	/*
-	 *              rx
-	 *          127 ^
-	 *              |       xxxxx     ++++++++++++++++++++
-	 *              |       xxxxxx     +++++++++++++++++++
-	 *              |       xxxxxxx     ++++++++++++++++++
-	 *              |       xxxxxxxx     +++++++++++++++++
-	 *              |       xxxxxxxxx     ++++++++++++++++
-	 *              |       xxxxxxxxxx     +++++++++++++++
-	 *              |       xxxxxxxxxxx     ++++++++++++++
-	 *              |       |xxxxx|xxxxx     +++++++++++++
-	 *              |       |xxxxx|xxxxxx     ++++++++++++
-	 *      search  |       |xxxxx|xxxxxxx     +++++++++++
-	 *      rxlow --------->|xxxxx|xxxxxxxx     ++++++++++
-	 *              |       |xxxxx|xxxxxxxxx     +++++++++
-	 *              |       |xxxxx|xxxxxxxxxx     ++++++++
-	 *              |       |xxxxx|xxxxxxxxxxx     +++++++
-	 *              |       |     |
-	 *              --------|-----|----------------------------> tx
-	 *              0       |     |                          127
-	 *                  txlow     txlow
-	 *                  start     end
-	 *
-	 *      |----------------------------------------------------------|
-	 *      | Primary | Secondary | Final                              |
-	 *      | Search  | Search    | Point                              |
-	 *      |---------|-----------|------------------------------------|
-	 *      | Fail    | Fail      | Return Fail                        |
-	 *      |---------|-----------|------------------------------------|
-	 *      | Fail    | Pass      | Return Fail                        |
-	 *      |---------|-----------|------------------------------------|
-	 *      | Pass    | Fail      | Return Fail                        |
-	 *      |---------|-----------|------------------------------------|
-	 *      | Pass    | Pass      | rx = min(primary.rx, secondary.rx) |
-	 *      |         |           | tx = primary.tx                    |
-	 *      |         |           | read_delay =                       |
-	 *      |         |           |         min(primary.read_delay,    |
-	 *      |         |           |             secondary.read_delay)  |
-	 *      |----------------------------------------------------------|
-	 */
-
-	/* Primary rxlow: Sweep TX window to find valid RX lower bound */
-
-	rxlow.tx = CQSPI_PHY_TX_LOOKUP_LOW_START;
-	do {
-		dev_dbg(dev, "Searching for Golden Primary rxlow on TX = %d\n",
-			rxlow.tx);
-		rxlow.read_delay = CQSPI_PHY_INIT_RD;
-		ret = cqspi_find_rx_low_ddr(f_pdata, mem, &rxlow);
-		rxlow.tx += CQSPI_PHY_DDR_SEARCH_STEP;
-	} while (ret && rxlow.tx <= CQSPI_PHY_TX_LOOKUP_LOW_END);
-	if (ret)
-		goto out;
-	dev_dbg(dev, "Golden Primary rxlow: RX: %d TX: %d RD: %d\n", rxlow.rx,
-		rxlow.tx, rxlow.read_delay);
-
-	/* Secondary rxlow: Verify at offset TX for robustness */
-
-	if (rxlow.tx <= (CQSPI_PHY_TX_LOOKUP_LOW_END - CQSPI_PHY_SEARCH_OFFSET))
-		srxlow.tx = rxlow.tx + CQSPI_PHY_SEARCH_OFFSET;
-	else
-		srxlow.tx = CQSPI_PHY_TX_LOOKUP_LOW_END;
-	dev_dbg(dev, "Searching for Golden Secondary rxlow on TX = %d\n",
-		srxlow.tx);
-	srxlow.read_delay = CQSPI_PHY_INIT_RD;
-	ret = cqspi_find_rx_low_ddr(f_pdata, mem, &srxlow);
-	if (ret)
-		goto out;
-	dev_dbg(dev, "Golden Secondary rxlow: RX: %d TX: %d RD: %d\n",
-		srxlow.rx, srxlow.tx, srxlow.read_delay);
-
-	rxlow.rx = min(rxlow.rx, srxlow.rx);
-	rxlow.read_delay = min(rxlow.read_delay, srxlow.read_delay);
-	dev_dbg(dev, "Golden Final rxlow: RX: %d TX: %d RD: %d\n", rxlow.rx,
-		rxlow.tx, rxlow.read_delay);
-
-	/* Golden rxhigh search: Find upper RX boundary at fixed TX */
-
-	/*
-	 *              rx
-	 *          127 ^
-	 *              |       |xxxx     ++++++++++++++++++++
-	 *              |       |xxxxx     +++++++++++++++++++
-	 *    search    |       |xxxxxx     ++++++++++++++++++
-	 *    rxhigh  --------->|xxxxxxx     +++++++++++++++++
-	 *    on fixed  |       |xxxxxxxx     ++++++++++++++++
-	 *    tx        |       |xxxxxxxxx     +++++++++++++++
-	 *              |       |xxxxxxxxxx     ++++++++++++++
-	 *              |       xxxxxxxxxxxx     +++++++++++++
-	 *              |       xxxxxxxxxxxxx     ++++++++++++
-	 *              |       xxxxxxxxxxxxxx     +++++++++++
-	 *              |       xxxxxxxxxxxxxxx     ++++++++++
-	 *              |       xxxxxxxxxxxxxxxx     +++++++++
-	 *              |       xxxxxxxxxxxxxxxxx     ++++++++
-	 *              |       xxxxxxxxxxxxxxxxxx     +++++++
-	 *              |
-	 *              -------------------------------------------> tx
-	 *              0                                        127
-	 *
-	 *      |----------------------------------------------------------|
-	 *      | Primary | Secondary | Final                              |
-	 *      | Search  | Search    | Point                              |
-	 *      |---------|-----------|------------------------------------|
-	 *      | Fail    | Fail      | Return Fail                        |
-	 *      |---------|-----------|------------------------------------|
-	 *      | Fail    | Pass      | Choose Secondary                   |
-	 *      |---------|-----------|------------------------------------|
-	 *      | Pass    | Fail      | Choose Primary                     |
-	 *      |---------|-----------|------------------------------------|
-	 *      | Pass    | Pass      | if (secondary.rx > primary.rx)     |
-	 *      |         |           |         Choose Secondary           |
-	 *      |         |           | else                               |
-	 *      |         |           |         Choose Primary             |
-	 *      |----------------------------------------------------------|
-	 */
-
-	/* Primary rxhigh: Search at rxlow's TX, decrement from max read_delay */
-
-	rxhigh.tx = rxlow.tx;
-	dev_dbg(dev, "Searching for Golden Primary rxhigh on TX = %d\n",
-		rxhigh.tx);
-	rxhigh.read_delay = CQSPI_PHY_MAX_RD;
-	ret = cqspi_find_rx_high_ddr(f_pdata, mem, &rxhigh);
-	if (ret)
-		primary = 0;
-	dev_dbg(dev, "Golden Primary rxhigh: RX: %d TX: %d RD: %d\n", rxhigh.rx,
-		rxhigh.tx, rxhigh.read_delay);
-
-	/* Secondary rxhigh: Verify at offset TX */
-
-	if (rxhigh.tx <=
-	    (CQSPI_PHY_TX_LOOKUP_LOW_END - CQSPI_PHY_SEARCH_OFFSET))
-		srxhigh.tx = rxhigh.tx + CQSPI_PHY_SEARCH_OFFSET;
-	else
-		srxhigh.tx = CQSPI_PHY_TX_LOOKUP_LOW_END;
-	dev_dbg(dev, "Searching for Golden Secondary rxhigh on TX = %d\n",
-		srxhigh.tx);
-	srxhigh.read_delay = CQSPI_PHY_MAX_RD;
-	ret = cqspi_find_rx_high_ddr(f_pdata, mem, &srxhigh);
-	if (ret)
-		secondary = 0;
-	dev_dbg(dev, "Golden Secondary rxhigh: RX: %d TX: %d RD: %d\n",
-		srxhigh.rx, srxhigh.tx, srxhigh.read_delay);
-
-	if (primary || secondary) {
-		if (srxhigh.rx > rxhigh.rx)
-			rxhigh = srxhigh;
-	} else {
-		goto out;
-	}
-	dev_dbg(dev, "Golden Final rxhigh: RX: %d TX: %d RD: %d\n", rxhigh.rx,
-		rxhigh.tx, rxhigh.read_delay);
-
-	primary = 1;
-	secondary = 1;
-
-	/* If rxlow/rxhigh at same read_delay, search backup at upper TX range */
-
-	if (rxlow.read_delay == rxhigh.read_delay) {
-		dev_dbg(dev, "rxlow and rxhigh at the same read delay.\n");
-
-		/* Backup rxlow: Search at high TX window */
-
-		/*
-		 *              rx
-		 *          127 ^
-		 *              |       xxxxx     ++++++++++++++++++++
-		 *              |       xxxxxx     +++++++++++++++++++
-		 *              |       xxxxxxx     ++++++++++++++++++
-		 *              |       xxxxxxxx     +++++++++++++++++
-		 *              |       xxxxxxxxx     ++++++++++++++++
-		 *              |       xxxxxxxxxx     +++++++++++++++
-		 *              |       xxxxxxxxxxx     ++++++++++++++
-		 *              |       xxxxxxxxxxxx     +++++++|++++|
-		 *              |       xxxxxxxxxxxxx     ++++++|++++|
-		 *      search  |       xxxxxxxxxxxxxx     +++++|++++|
-		 *      rxlow --------------------------------->|++++|
-		 *              |       xxxxxxxxxxxxxxxx     +++|++++|
-		 *              |       xxxxxxxxxxxxxxxxx     ++|++++|
-		 *              |       xxxxxxxxxxxxxxxxxx     +|++++|
-		 *              |                               |    |
-		 *              --------------------------------|----|-----> tx
-		 *              0                               |    |   127
-		 *                                         txhigh    txhigh
-		 *                                          start    end
-		 *
-		 *      |-----------------------------------------------------|
-		 *      | Primary | Secondary | Final                         |
-		 *      | Search  | Search    | Point                         |
-		 *      |---------|-----------|-------------------------------|
-		 *      | Fail    | Fail      | Return Fail                   |
-		 *      |---------|-----------|-------------------------------|
-		 *      | Fail    | Pass      | Return Fail                   |
-		 *      |---------|-----------|-------------------------------|
-		 *      | Pass    | Fail      | Return Fail                   |
-		 *      |---------|-----------|-------------------------------|
-		 *      | Pass    | Pass      | rx =                          |
-		 *      |         |           |  min(primary.rx, secondary.rx)|
-		 *      |         |           | tx = primary.tx               |
-		 *      |         |           | read_delay =                  |
-		 *      |         |           |  min(primary.read_delay,      |
-		 *      |         |           |      secondary.read_delay)    |
-		 *      |-----------------------------------------------------|
-		 */
-
-		/* Primary backup: Decrement TX from high window end */
-
-		backuppoint.tx = CQSPI_PHY_TX_LOOKUP_HIGH_END;
-		do {
-			dev_dbg(dev,
-				"Searching for Backup Primary rxlow on TX = %d\n",
-				backuppoint.tx);
-			backuppoint.read_delay = CQSPI_PHY_INIT_RD;
-			ret = cqspi_find_rx_low_ddr(f_pdata, mem, &backuppoint);
-			backuppoint.tx -= CQSPI_PHY_DDR_SEARCH_STEP;
-		} while (ret &&
-			 backuppoint.tx >= CQSPI_PHY_TX_LOOKUP_HIGH_START);
-		if (ret)
-			goto out;
-		dev_dbg(dev, "Backup Primary rxlow: RX: %d TX: %d RD: %d\n",
-			backuppoint.rx, backuppoint.tx, backuppoint.read_delay);
-
-		/* Secondary backup: Verify at offset TX */
-
-		if (backuppoint.tx >=
-		    (CQSPI_PHY_TX_LOOKUP_HIGH_START + CQSPI_PHY_SEARCH_OFFSET))
-			srxlow.tx = backuppoint.tx - CQSPI_PHY_SEARCH_OFFSET;
-		else
-			srxlow.tx = CQSPI_PHY_TX_LOOKUP_HIGH_START;
-		dev_dbg(dev,
-			"Searching for Backup Secondary rxlow on TX = %d\n",
-			srxlow.tx);
-		srxlow.read_delay = CQSPI_PHY_INIT_RD;
-		ret = cqspi_find_rx_low_ddr(f_pdata, mem, &srxlow);
-		if (ret)
-			goto out;
-		dev_dbg(dev, "Backup Secondary rxlow: RX: %d TX: %d RD: %d\n",
-			srxlow.rx, srxlow.tx, srxlow.read_delay);
-
-		backuppoint.rx = min(backuppoint.rx, srxlow.rx);
-		backuppoint.read_delay =
-			min(backuppoint.read_delay, srxlow.read_delay);
-		dev_dbg(dev, "Backup Final rxlow: RX: %d TX: %d RD: %d\n",
-			backuppoint.rx, backuppoint.tx, backuppoint.read_delay);
-
-		if (backuppoint.rx < rxlow.rx) {
-			rxlow = backuppoint;
-			dev_dbg(dev, "Updating rxlow to the one at TX = %d\n",
-				backuppoint.tx);
-		}
-		dev_dbg(dev, "Final rxlow: RX: %d TX: %d RD: %d\n", rxlow.rx,
-			rxlow.tx, rxlow.read_delay);
-
-		/* Backup rxhigh: Search at fixed backup TX */
-
-		/*
-		 *              rx
-		 *          127 ^
-		 *              |       xxxxx     +++++++++++++++++++|
-		 *              |       xxxxxx     ++++++++++++++++++|
-		 *    search    |       xxxxxxx     +++++++++++++++++|
-		 *    rxhigh  -------------------------------------->|
-		 *    on fixed  |       xxxxxxxxx     +++++++++++++++|
-		 *    tx        |       xxxxxxxxxx     ++++++++++++++|
-		 *              |       xxxxxxxxxxx     +++++++++++++|
-		 *              |       xxxxxxxxxxxx     +++++++++++++
-		 *              |       xxxxxxxxxxxxx     ++++++++++++
-		 *              |       xxxxxxxxxxxxxx     +++++++++++
-		 *              |       xxxxxxxxxxxxxxx     ++++++++++
-		 *              |       xxxxxxxxxxxxxxxx     +++++++++
-		 *              |       xxxxxxxxxxxxxxxxx     ++++++++
-		 *              |       xxxxxxxxxxxxxxxxxx     +++++++
-		 *              |
-		 *              -------------------------------------------> tx
-		 *               0                                        127
-		 *
-		 *      |-----------------------------------------------------|
-		 *      | Primary | Secondary | Final                         |
-		 *      | Search  | Search    | Point                         |
-		 *      |---------|-----------|-------------------------------|
-		 *      | Fail    | Fail      | Return Fail                   |
-		 *      |---------|-----------|-------------------------------|
-		 *      | Fail    | Pass      | Choose Secondary              |
-		 *      |---------|-----------|-------------------------------|
-		 *      | Pass    | Fail      | Choose Primary                |
-		 *      |---------|-----------|-------------------------------|
-		 *      | Pass    | Pass      | if (secondary.rx > primary.rx)|
-		 *      |         |           |         Choose Secondary      |
-		 *      |         |           | else                          |
-		 *      |         |           |         Choose Primary        |
-		 *      |-----------------------------------------------------|
-		 */
-
-		/* Primary backup rxhigh: Use backup TX, decrement from max read_delay */
-
-		dev_dbg(dev, "Searching for Backup Primary rxhigh on TX = %d\n",
-			backuppoint.tx);
-		backuppoint.read_delay = CQSPI_PHY_MAX_RD;
-		ret = cqspi_find_rx_high_ddr(f_pdata, mem, &backuppoint);
-		if (ret)
-			primary = 0;
-		dev_dbg(dev, "Backup Primary rxhigh: RX: %d TX: %d RD: %d\n",
-			backuppoint.rx, backuppoint.tx, backuppoint.read_delay);
-
-		/* Secondary backup rxhigh: Verify at offset TX */
-
-		if (backuppoint.tx >=
-		    (CQSPI_PHY_TX_LOOKUP_HIGH_START + CQSPI_PHY_SEARCH_OFFSET))
-			srxhigh.tx = backuppoint.tx - CQSPI_PHY_SEARCH_OFFSET;
-		else
-			srxhigh.tx = CQSPI_PHY_TX_LOOKUP_HIGH_START;
-		dev_dbg(dev,
-			"Searching for Backup Secondary rxhigh on TX = %d\n",
-			srxhigh.tx);
-		srxhigh.read_delay = CQSPI_PHY_MAX_RD;
-		ret = cqspi_find_rx_high_ddr(f_pdata, mem, &srxhigh);
-		if (ret)
-			secondary = 0;
-		dev_dbg(dev, "Backup Secondary rxhigh: RX: %d TX: %d RD: %d\n",
-			srxhigh.rx, srxhigh.tx, srxhigh.read_delay);
-
-		if (primary || secondary) {
-			if (srxhigh.rx > backuppoint.rx)
-				backuppoint = srxhigh;
-		} else {
-			goto out;
-		}
-		dev_dbg(dev, "Backup Final rxhigh: RX: %d TX: %d RD: %d\n",
-			backuppoint.rx, backuppoint.tx, backuppoint.read_delay);
-
-		if (backuppoint.rx > rxhigh.rx) {
-			rxhigh = backuppoint;
-			dev_dbg(dev, "Updating rxhigh to the one at TX = %d\n",
-				backuppoint.tx);
-		}
-		dev_dbg(dev, "Final rxhigh: RX: %d TX: %d RD: %d\n", rxhigh.rx,
-			rxhigh.tx, rxhigh.read_delay);
-	}
-
-	/* Golden txlow: Fix RX at 1/4 of RX window, search TX lower bound */
-
-	/*
-	 *              rx
-	 *          127 ^
-	 *              |
-	 *     rxhigh --------->xxxxx     ++++++++++++++++++++
-	 *              |       xxxxxx     +++++++++++++++++++
-	 *              |       xxxxxxx     ++++++++++++++++++
-	 *              |       xxxxxxxx     +++++++++++++++++
-	 *              |       xxxxxxxxx     ++++++++++++++++
-	 *              |       xxxxxxxxxx     +++++++++++++++
-	 *              |       xxxxxxxxxxx     ++++++++++++++
-	 *              |       xxxxxxxxxxxx     +++++++++++++
-	 *    fix rx    |       xxxxxxxxxxxxx     ++++++++++++
-	 *    1/4 b/w ---------><------->xxxxx     +++++++++++
-	 *    rxlow and |       xxxx|xxxxxxxxxx     ++++++++++
-	 *    rxhigh    |       xxxx|xxxxxxxxxxx     +++++++++
-	 *              |       xxxx|xxxxxxxxxxxx     ++++++++
-	 *      rxlow --------->xxxx|xxxxxxxxxxxxx     +++++++
-	 *              |           |
-	 *              ------------|------------------------------> tx
-	 *              0           |                            127
-	 *                     search
-	 *                      txlow
-	 */
-
-	tmp = rxhigh.rx - rxlow.rx;
-	txlow.rx = rxlow.rx + (tmp / 4);
-	dev_dbg(dev, "Searching for Golden txlow on RX = %d\n", txlow.rx);
-	txlow.read_delay = CQSPI_PHY_INIT_RD;
-	ret = cqspi_find_tx_low_ddr(f_pdata, mem, &txlow);
-	if (ret)
-		goto out;
-	dev_dbg(dev, "Golden txlow: RX: %d TX: %d RD: %d\n", txlow.rx, txlow.tx,
-		txlow.read_delay);
-
-	/* Golden txhigh: Same RX as txlow, decrement from max read_delay */
-
-	/*
-	 *              rx
-	 *          127 ^
-	 *              |
-	 *     rxhigh --------->xxxxx     ++++++++++++++++++++
-	 *              |       xxxxxx     +++++++++++++++++++
-	 *              |       xxxxxxx     ++++++++++++++++++
-	 *              |       xxxxxxxx     +++++++++++++++++
-	 *              |       xxxxxxxxx     ++++++++++++++++
-	 *              |       xxxxxxxxxx     +++++++++++++++
-	 *              |       xxxxxxxxxxx     ++++++++++++++
-	 *              |       xxxxxxxxxxxx     +++++++++++++
-	 *    fix rx    |       xxxxxxxxxxxxx     ++++++++++++
-	 *    1/4 b/w --------------------------------><----->
-	 *    rxlow and |       xxxxxxxxxxxxxxx     ++++++|+++
-	 *    rxhigh    |       xxxxxxxxxxxxxxxx     +++++|+++
-	 *              |       xxxxxxxxxxxxxxxxx     ++++|+++
-	 *      rxlow --------->xxxxxxxxxxxxxxxxxx     +++|+++
-	 *              |                                 |
-	 *              ----------------------------------|--------> tx
-	 *              0                                 |      127
-	 *                                           search
-	 *                                           txhigh
-	 */
-
-	txhigh.rx = txlow.rx;
-	dev_dbg(dev, "Searching for Golden txhigh on RX = %d\n", txhigh.rx);
-	txhigh.read_delay = CQSPI_PHY_MAX_RD;
-	ret = cqspi_find_tx_high_ddr(f_pdata, mem, &txhigh);
-	if (ret)
-		goto out;
-	dev_dbg(dev, "Golden txhigh: RX: %d TX: %d RD: %d\n", txhigh.rx,
-		txhigh.tx, txhigh.read_delay);
-
-	/* If txlow/txhigh at same read_delay, search backup at 3/4 RX window */
-
-	if (txlow.read_delay == txhigh.read_delay) {
-		/* Backup txlow: Fix RX at 3/4 of RX window */
-
-		/*
-		 *              rx
-		 *          127 ^
-		 *              |
-		 *     rxhigh --------->xxxxx     ++++++++++++++++++++
-		 *              |       xxxxxx     +++++++++++++++++++
-		 *    fix rx    |       xxxxxxx     ++++++++++++++++++
-		 *    3/4 b/w ---------><----->x     +++++++++++++++++
-		 *    rxlow and |       xxxx|xxxx     ++++++++++++++++
-		 *    rxhigh    |       xxxx|xxxxx     +++++++++++++++
-		 *              |       xxxx|xxxxxx     ++++++++++++++
-		 *              |       xxxx|xxxxxxx     +++++++++++++
-		 *              |       xxxx|xxxxxxxx     ++++++++++++
-		 *              |       xxxx|xxxxxxxxx     +++++++++++
-		 *              |       xxxx|xxxxxxxxxx     ++++++++++
-		 *              |       xxxx|xxxxxxxxxxx     +++++++++
-		 *              |       xxxx|xxxxxxxxxxxx     ++++++++
-		 *      rxlow --------->xxxx|xxxxxxxxxxxxx     +++++++
-		 *              |           |
-		 *              ------------|------------------------------> tx
-		 *              0           |                            127
-		 *                     search
-		 *                      txlow
-		 */
-
-		dev_dbg(dev, "txlow and txhigh at the same read delay.\n");
-		backuppoint.rx = rxlow.rx + ((tmp * 3) / 4);
-		dev_dbg(dev, "Searching for Backup txlow on RX = %d\n",
-			backuppoint.rx);
-		backuppoint.read_delay = CQSPI_PHY_INIT_RD;
-		ret = cqspi_find_tx_low_ddr(f_pdata, mem, &backuppoint);
-		if (ret)
-			goto out;
-		dev_dbg(dev, "Backup txlow: RX: %d TX: %d RD: %d\n",
-			backuppoint.rx, backuppoint.tx, backuppoint.read_delay);
-
-		if (backuppoint.tx < txlow.tx) {
-			txlow = backuppoint;
-			dev_dbg(dev, "Updating txlow with the one at RX = %d\n",
-				backuppoint.rx);
-		}
-		dev_dbg(dev, "Final txlow: RX: %d TX: %d RD: %d\n", txlow.rx,
-			txlow.tx, txlow.read_delay);
-
-		/* Backup txhigh: Same RX as backup txlow, decrement from max */
-
-		/*
-		 *              rx
-		 *          127 ^
-		 *              |
-		 *     rxhigh --------->xxxxx     ++++++++++++++++++++
-		 *              |       xxxxxx     +++++++++++++++++++
-		 *    fix rx    |       xxxxxxx     ++++++++++++++++++
-		 *    3/4 b/w ------------------------------><------->
-		 *    rxlow and |       xxxxxxxxx     +++++++++++|++++
-		 *    rxhigh    |       xxxxxxxxxx     ++++++++++|++++
-		 *              |       xxxxxxxxxxx     +++++++++|++++
-		 *              |       xxxxxxxxxxxx     ++++++++|++++
-		 *              |       xxxxxxxxxxxxx     +++++++|++++
-		 *              |       xxxxxxxxxxxxxx     ++++++|++++
-		 *              |       xxxxxxxxxxxxxxx     +++++|++++
-		 *              |       xxxxxxxxxxxxxxxx     ++++|++++
-		 *              |       xxxxxxxxxxxxxxxxx     +++|++++
-		 *      rxlow --------->xxxxxxxxxxxxxxxxxx     ++|++++
-		 *              |                                |
-		 *              ---------------------------------|---------> tx
-		 *              0                                |       127
-		 *                                               search
-		 *                                               txhigh
-		 */
-
-		dev_dbg(dev, "Searching for Backup txhigh on RX = %d\n",
-			backuppoint.rx);
-		backuppoint.read_delay = CQSPI_PHY_MAX_RD;
-		ret = cqspi_find_tx_high_ddr(f_pdata, mem, &backuppoint);
-		if (ret)
-			goto out;
-		dev_dbg(dev, "Backup txhigh: RX: %d TX: %d RD: %d\n",
-			backuppoint.rx, backuppoint.tx, backuppoint.read_delay);
-
-		if (backuppoint.tx > txhigh.tx) {
-			txhigh = backuppoint;
-			dev_dbg(dev,
-				"Updating txhigh with the one at RX = %d\n",
-				backuppoint.rx);
-		}
-		dev_dbg(dev, "Final txhigh: RX: %d TX: %d RD: %d\n", txhigh.rx,
-			txhigh.tx, txhigh.read_delay);
-	}
-
-	/* Corner points: Define and verify bottomleft and topright boundaries */
-
-	/*
-	 *              rx
-	 *          127 ^
-	 *              |                                 topright
-	 *              |                                    *
-	 *    rxhigh -----------xxxxx     ++++++++++++++++++++
-	 *              |       xxxxxx     +++++++++++++++++++
-	 *              |       xxxxxxx     ++++++++++++++++++
-	 *              |       xxxxxxxx     +++++++++++++++++
-	 *              |       xxxxxxxxx     ++++++++++++++++
-	 *              |       xxxxxxxxxx     +++++++++++++++
-	 *              |       xxxxxxxxxxx     ++++++++++++++
-	 *              |       xxxxxxxxxxxx     +++++++++++++
-	 *              |       xxxxxxxxxxxxx     ++++++++++++
-	 *              |       xxxxxxxxxxxxxx     +++++++++++
-	 *              |       xxxxxxxxxxxxxxx     ++++++++++
-	 *              |       xxxxxxxxxxxxxxxx     +++++++++
-	 *              |       xxxxxxxxxxxxxxxxx     ++++++++
-	 *     rxlow -----------xxxxxxxxxxxxxxxxxx     +++++++
-	 *              |       *                            |
-	 *              | bottom|left                        |
-	 *              --------|----------------------------|---> tx
-	 *              0       |                            | 127
-	 *                      |                            |
-	 *                      txlow                   txhigh
-	 *
-	 * Verification: Test point 4 taps inside each corner, adjust
-	 * read_delay Â±1 if needed to ensure valid corners for gap search.
-	 */
-
-	bottomleft.tx = txlow.tx;
-	bottomleft.rx = rxlow.rx;
-	if (txlow.read_delay <= rxlow.read_delay)
-		bottomleft.read_delay = txlow.read_delay;
-	else
-		bottomleft.read_delay = rxlow.read_delay;
-
-	/* Verify bottomleft: Test 4 taps inside, adjust read_delay if needed */
-	backupcornerpoint = bottomleft;
-	backupcornerpoint.tx += 4;
-	backupcornerpoint.rx += 4;
-	ret = cqspi_phy_apply_setting(f_pdata, &backupcornerpoint);
-	if (!ret)
-		ret = cqspi_phy_check_pattern(f_pdata, mem);
-
-	if (ret) {
-		backupcornerpoint.read_delay--;
-		ret = cqspi_phy_apply_setting(f_pdata, &backupcornerpoint);
-		if (!ret)
-			ret = cqspi_phy_check_pattern(f_pdata, mem);
-	}
-
-	/* TODO: if (ret) - handle case where corner cannot be verified */
-
-	if (!ret)
-		bottomleft.read_delay = backupcornerpoint.read_delay;
-
-	topright.tx = txhigh.tx;
-	topright.rx = rxhigh.rx;
-	if (txhigh.read_delay >= rxhigh.read_delay)
-		topright.read_delay = txhigh.read_delay;
-	else
-		topright.read_delay = rxhigh.read_delay;
-
-	/* Verify topright: Test 4 taps inside, adjust read_delay if needed */
-	backupcornerpoint = topright;
-	backupcornerpoint.tx -= 4;
-	backupcornerpoint.rx -= 4;
-	ret = cqspi_phy_apply_setting(f_pdata, &backupcornerpoint);
-	if (!ret)
-		ret = cqspi_phy_check_pattern(f_pdata, mem);
-
-	if (ret) {
-		backupcornerpoint.read_delay++;
-		ret = cqspi_phy_apply_setting(f_pdata, &backupcornerpoint);
-		if (!ret)
-			ret = cqspi_phy_check_pattern(f_pdata, mem);
-	}
-
-	/* TODO: if (ret) - handle case where corner cannot be verified */
-
-	if (!ret)
-		topright.read_delay = backupcornerpoint.read_delay;
-
-	dev_dbg(dev, "topright: RX: %d TX: %d RD: %d\n", topright.rx,
-		topright.tx, topright.read_delay);
-	dev_dbg(dev, "bottomleft: RX: %d TX: %d RD: %d\n", bottomleft.rx,
-		bottomleft.tx, bottomleft.read_delay);
-	ret = cqspi_phy_find_gaplow_ddr(f_pdata, mem, &bottomleft, &topright,
-					&gaplow);
-	if (ret)
-		goto out;
-	dev_dbg(dev, "gaplow: RX: %d TX: %d RD: %d\n", gaplow.rx, gaplow.tx,
-		gaplow.read_delay);
-
-	/* Final point selection: Handle single vs dual passing regions */
-
-	if (bottomleft.read_delay == topright.read_delay) {
-		/*
-		 * Single region: Use midpoint with temperature compensation.
-		 * Gaplow approximates upper boundary of valid region.
-		 *
-		 *              rx
-		 *          127 ^
-		 *              |              gaplow (approx. topright)
-		 *              |              |
-		 *    rxhigh -----------xxxxxxx|          failing
-		 *              |       xxxxxxx|           region
-		 *              |       xxxxxxx|     <--------------->
-		 *              |       xxxxxxx|     +++++++++++++++++
-		 *              |       xxxxxxxxx     ++++++++++++++++
-		 *              |       xxxxxxxxxx     +++++++++++++++
-		 *              |       xxxxxxxxxxx     ++++++++++++++
-		 *              |       xxxxxxxxxxxx     +++++++++++++
-		 *              |       xxxxxxxxxxxxx     ++++++++++++
-		 *              |       xxxxxxxxxxxxxx     +++++++++++
-		 *              |       xxxxxxxxxxxxxxx     ++++++++++
-		 *              |       xxxxxxxxxxxxxxxx     +++++++++
-		 *              |       xxxxxxxxxxxxxxxxx     ++++++++
-		 *     rxlow -----------xxxxxxxxxxxxxxxxxx     +++++++
-		 *              |       *                            |
-		 *              | bottom|left                        |
-		 *              --------|----------------------------|---> tx
-		 *              0       |                            | 127
-		 *                      |                            |
-		 *                      txlow                   txhigh
-		 *                             (same read_delay)
-		 *
-		 * Temperature compensation: Valid region shifts with temp.
-		 * Offset = region_size / (330 / (temp - 87.5Â°C))
-		 * Factor 330 is empirically determined for this hardware.
-		 */
-
-		dev_dbg(dev,
-			"bottomleft and topright at the same read delay.\n");
-
-		topright = gaplow;
-		searchpoint.read_delay = bottomleft.read_delay;
-		searchpoint.tx =
-			bottomleft.tx + ((topright.tx - bottomleft.tx) / 2);
-		searchpoint.rx =
-			bottomleft.rx + ((topright.rx - bottomleft.rx) / 2);
-
-		ret = cqspi_get_temp(&tmp);
+	diag_start = (struct phy_setting){ .tx = 0,
+					   .rx = 0,
+					   .read_delay = CQSPI_PHY_RD_INVALID };
+	diag_end = (struct phy_setting){ .tx = CQSPI_PHY_MAX_DELAY,
+					 .rx = CQSPI_PHY_MAX_DELAY,
+					 .read_delay = CQSPI_PHY_RD_INVALID };
+
+	dev_dbg(dev, "DDR PHY tuning: searching main diagonal\n");
+	ret = cqspi_phy_search_diagonal_ddr(f_pdata, mem, &tuning_pt,
+					    diag_start, diag_end);
+
+	for (shift = CQSPI_PHY_DDR_DIAG_SHIFT;
+	     ret && shift <= CQSPI_PHY_DDR_MAX_DIAG_SHIFT;
+	     shift += CQSPI_PHY_DDR_DIAG_SHIFT) {
+		/* Up-shifted diagonal: rx-biased */
+		dev_dbg(dev, "DDR PHY tuning: up-shifted diagonal, shift=%d\n",
+			shift);
+		diag_start = (struct phy_setting){
+			.tx = 0, .rx = shift, .read_delay = CQSPI_PHY_RD_INVALID
+		};
+		diag_end =
+			(struct phy_setting){ .tx = CQSPI_PHY_MAX_DELAY - shift,
+					      .rx = CQSPI_PHY_MAX_DELAY,
+					      .read_delay =
+						      CQSPI_PHY_RD_INVALID };
+		ret = cqspi_phy_search_diagonal_ddr(f_pdata, mem, &tuning_pt,
+						    diag_start, diag_end);
 		if (ret) {
-			/* Assume room temperature if sensor unavailable */
+			/* Right-shifted diagonal: tx-biased */
 			dev_dbg(dev,
-				"Unable to get temperature. Assuming room temperature\n");
-			tmp = CQSPI_PHY_DEFAULT_TEMP;
-		}
-
-		if (tmp < CQSPI_PHY_MIN_TEMP || tmp > CQSPI_PHY_MAX_TEMP) {
-			dev_err(dev,
-				"Temperature outside operating range: %dC\n",
-				tmp);
-			ret = -EINVAL;
-			goto out;
-		}
-
-		if (tmp == CQSPI_PHY_MID_TEMP)
-			tmp++; /* Avoid divide-by-zero */
-		dev_dbg(dev, "Temperature: %dC\n", tmp);
-
-		/* Apply temperature offset: positive at high temp, negative at low */
-		searchpoint.tx += (topright.tx - bottomleft.tx) /
-				  (330 / (tmp - CQSPI_PHY_MID_TEMP));
-		searchpoint.rx += (topright.rx - bottomleft.rx) /
-				  (330 / (tmp - CQSPI_PHY_MID_TEMP));
-	} else {
-		/*
-		 * Dual regions: Gap separates two valid regions, choose larger.
-		 *
-		 *              rx
-		 *          127 ^
-		 *              |                                 topright
-		 *              |                                    *
-		 *    rxhigh -----------xxxxx     +++++++++++++++++++|
-		 *              |       xxxxxx    <region 2> ++++++++|
-		 *              |       xxxxxxx     +++++++++++++++++|
-		 *              |       xxxxxxxx     ++++++++++++++++|
-		 *              |       xxxxxxxxx     +++++++++++++++|
-		 *              |       xxxxxxxxxx     ++++++++++++++|
-		 *              |                  failing           |
-		 *              |                  region            |
-		 *              |       xxxxxxxxxxxxx     +++++++++++|
-		 *              |       xxxxxxxxxxxxxx     ++++++++++|
-		 *              |       xxxxxxxxxxxxxxx     +++++++++|
-		 *              |       xxxxxxxxxxxxxxxx     ++++++++|
-		 *              |       xxxxxxxxx <region 1>  +++++++|
-		 *     rxlow -----------xxxxxxxxxxxxxxxxxx     ++++++|
-		 *              |       *                            |
-		 *              | bottom|left                        |
-		 *              --------|----------------------------|---> tx
-		 *              0       |                            | 127
-		 *                      |                            |
-		 *                      txlow                   txhigh
-		 *
-		 * Strategy: Compare Manhattan distances from gap boundaries to
-		 * corners. Choose corner furthest from gap (larger region).
-		 * Apply 16-tap margin inward, scale RX proportionally.
-		 */
-
-		ret = cqspi_phy_find_gaphigh_ddr(f_pdata, mem, &bottomleft,
-						 &topright, &gaphigh);
-		if (ret)
-			goto out;
-		dev_dbg(dev, "gaphigh: RX: %d TX: %d RD: %d\n", gaphigh.rx,
-			gaphigh.tx, gaphigh.read_delay);
-
-		/* Compare Manhattan distances: choose corner furthest from gap */
-		if ((abs(gaplow.tx - bottomleft.tx) +
-		     abs(gaplow.rx - bottomleft.rx)) <
-		    (abs(gaphigh.tx - topright.tx) +
-		     abs(gaphigh.rx - topright.rx))) {
-			/* Topright further: Use Region 2, 16 taps inward */
-			searchpoint = topright;
-			searchpoint.tx -= 16;
-			searchpoint.rx -= (16 * (topright.rx - bottomleft.rx)) /
-					  (topright.tx - bottomleft.tx);
-		} else {
-			/* Bottomleft further: Use Region 1, 16 taps inward */
-			searchpoint = bottomleft;
-			searchpoint.tx += 16;
-			searchpoint.rx += (16 * (topright.rx - bottomleft.rx)) /
-					  (topright.tx - bottomleft.tx);
+				"DDR PHY tuning: right-shifted diagonal, shift=%d\n",
+				shift);
+			diag_start = (struct phy_setting){
+				.tx = shift,
+				.rx = 0,
+				.read_delay = CQSPI_PHY_RD_INVALID
+			};
+			diag_end = (struct phy_setting){
+				.tx = CQSPI_PHY_MAX_DELAY,
+				.rx = CQSPI_PHY_MAX_DELAY - shift,
+				.read_delay = CQSPI_PHY_RD_INVALID
+			};
+			ret = cqspi_phy_search_diagonal_ddr(
+				f_pdata, mem, &tuning_pt, diag_start, diag_end);
 		}
 	}
-
-	/* Apply and verify final tuning point */
-	dev_dbg(dev, "Final tuning point: RX: %d TX: %d RD: %d\n",
-		searchpoint.rx, searchpoint.tx, searchpoint.read_delay);
-	ret = cqspi_phy_apply_setting(f_pdata, &searchpoint);
-	if (!ret)
-		ret = cqspi_phy_check_pattern(f_pdata, mem);
 
 	if (ret) {
 		dev_err(dev,
-			"Failed to find pattern at final calibration point\n");
-		ret = -EINVAL;
+			"DDR PHY tuning failed to find valid configuration\n");
 		goto out;
 	}
 
-	ret = 0;
-	f_pdata->phy_setting.read_delay = searchpoint.read_delay;
-	f_pdata->phy_setting.rx = searchpoint.rx;
-	f_pdata->phy_setting.tx = searchpoint.tx;
+	dev_dbg(dev, "DDR PHY tuning point: TX=%u RX=%u RD=%u\n", tuning_pt.tx,
+		tuning_pt.rx, tuning_pt.read_delay);
+
+	ret = cqspi_phy_apply_setting(f_pdata, &tuning_pt);
+	if (!ret)
+		ret = cqspi_phy_check_pattern(f_pdata, mem);
+	if (ret) {
+		dev_err(dev, "DDR PHY: pattern check failed at tuning point\n");
+	} else {
+		f_pdata->phy_setting.read_delay = tuning_pt.read_delay;
+		f_pdata->phy_setting.rx = tuning_pt.rx;
+		f_pdata->phy_setting.tx = tuning_pt.tx;
+	}
+
 out:
 	if (ret)
 		f_pdata->use_phy = false;

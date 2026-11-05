@@ -3588,8 +3588,11 @@ int dispc_init(struct tidss_device *tidss)
 
 void dispc_splash_fini(struct dispc_device *dispc)
 {
-	if (WARN_ON(!dispc->tidss->boot_enabled_vp_mask))
+	/* If no splash screen was preserved on this DSS, nothing to clean up */
+	if (!dispc->tidss->boot_enabled_vp_mask) {
+		dev_warn(dispc->dev, "No splash screen to clean up (boot_enabled_vp_mask=0)\n");
 		return;
+	}
 
 	/*
 	 * Do a reset now, to clean up the bootloader setup, as we're about to

@@ -597,6 +597,28 @@ out:
 	return ret;
 }
 
+static int k3_r5_rproc_handle_rsc(struct rproc *rproc, u32 rsc_type, void *rsc,
+				   int offset, int avail)
+{
+	int ret;
+	struct k3_rproc *kproc = rproc->priv;
+
+	ret = k3_rproc_handle_rsc(rproc, rsc_type, rsc, offset, avail);
+
+	if (ret != RSC_HANDLED)
+		return ret;
+
+	/* set R5 specific stop/start handlers */
+	if (!kproc->always_on) {
+		rproc->ops->prepare = k3_r5_rproc_prepare;
+		rproc->ops->start = k3_r5_rproc_start;
+		rproc->ops->stop = k3_r5_rproc_stop;
+		rproc->ops->unprepare = k3_r5_rproc_unprepare;
+	}
+
+	return ret;
+}
+
 /*
  * Internal Memory translation helper
  *
@@ -640,6 +662,7 @@ static const struct rproc_ops k3_r5_rproc_ops = {
 	.stop		= k3_r5_rproc_stop,
 	.kick		= k3_rproc_kick,
 	.da_to_va	= k3_r5_rproc_da_to_va,
+	.handle_rsc	= k3_r5_rproc_handle_rsc,
 };
 
 /*
@@ -1186,9 +1209,9 @@ static int k3_r5_cluster_rproc_init(struct platform_device *pdev)
 			goto out;
 		}
 
+init_rmem:
 		init_completion(&kproc->shutdown_complete);
 		init_completion(&kproc->suspend_comp);
-init_rmem:
 		k3_r5_adjust_tcm_sizes(kproc);
 
 		ret = k3_reserved_mem_init(kproc);

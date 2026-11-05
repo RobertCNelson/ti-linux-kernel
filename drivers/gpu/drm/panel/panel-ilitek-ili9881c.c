@@ -44,6 +44,11 @@ struct ili9881c_desc {
 	const unsigned long mode_flags;
 	u8 default_address_mode;
 	unsigned int lanes;
+	/* Init before the DSI host starts video, with the link in LP-11. */
+	bool init_before_host;
+	bool soft_reset;
+	/* Also applied after the final switch to page 0. */
+	unsigned int page_switch_delay_ms;
 };
 
 struct ili9881c {
@@ -652,6 +657,204 @@ static const struct ili9881c_instr kd050hdfia020_init[] = {
 	ILI9881C_SWITCH_PAGE_INSTR(0),
 	ILI9881C_COMMAND_INSTR(0x35, 0x00),
 	ILI9881C_COMMAND_INSTR(0x3A, 0x7),
+};
+
+static const struct ili9881c_instr mf_070zimacaa0_init[] = {
+	ILI9881C_SWITCH_PAGE_INSTR(3),
+	ILI9881C_COMMAND_INSTR(0x01, 0x00),
+	ILI9881C_COMMAND_INSTR(0x02, 0x00),
+	ILI9881C_COMMAND_INSTR(0x03, 0x72),
+	ILI9881C_COMMAND_INSTR(0x04, 0x00),
+	ILI9881C_COMMAND_INSTR(0x05, 0x00),
+	ILI9881C_COMMAND_INSTR(0x06, 0x09),
+	ILI9881C_COMMAND_INSTR(0x07, 0x00),
+	ILI9881C_COMMAND_INSTR(0x08, 0x00),
+	ILI9881C_COMMAND_INSTR(0x09, 0x00),
+	ILI9881C_COMMAND_INSTR(0x0a, 0x00),
+	ILI9881C_COMMAND_INSTR(0x0b, 0x00),
+	ILI9881C_COMMAND_INSTR(0x0c, 0x00),
+	ILI9881C_COMMAND_INSTR(0x0d, 0x00),
+	ILI9881C_COMMAND_INSTR(0x0e, 0x00),
+	ILI9881C_COMMAND_INSTR(0x0f, 0x00),
+	ILI9881C_COMMAND_INSTR(0x10, 0x00),
+	ILI9881C_COMMAND_INSTR(0x11, 0x00),
+	ILI9881C_COMMAND_INSTR(0x12, 0x00),
+	ILI9881C_COMMAND_INSTR(0x13, 0x00),
+	ILI9881C_COMMAND_INSTR(0x14, 0x00),
+	ILI9881C_COMMAND_INSTR(0x15, 0x00),
+	ILI9881C_COMMAND_INSTR(0x16, 0x00),
+	ILI9881C_COMMAND_INSTR(0x17, 0x00),
+	ILI9881C_COMMAND_INSTR(0x18, 0x00),
+	ILI9881C_COMMAND_INSTR(0x19, 0x00),
+	ILI9881C_COMMAND_INSTR(0x1a, 0x00),
+	ILI9881C_COMMAND_INSTR(0x1b, 0x00),
+	ILI9881C_COMMAND_INSTR(0x1c, 0x00),
+	ILI9881C_COMMAND_INSTR(0x1d, 0x00),
+	ILI9881C_COMMAND_INSTR(0x1e, 0x40),
+	ILI9881C_COMMAND_INSTR(0x1f, 0x80),
+	ILI9881C_COMMAND_INSTR(0x20, 0x05),
+	ILI9881C_COMMAND_INSTR(0x21, 0x02),
+	ILI9881C_COMMAND_INSTR(0x22, 0x00),
+	ILI9881C_COMMAND_INSTR(0x23, 0x00),
+	ILI9881C_COMMAND_INSTR(0x24, 0x00),
+	ILI9881C_COMMAND_INSTR(0x25, 0x00),
+	ILI9881C_COMMAND_INSTR(0x26, 0x00),
+	ILI9881C_COMMAND_INSTR(0x27, 0x00),
+	ILI9881C_COMMAND_INSTR(0x28, 0x33),
+	ILI9881C_COMMAND_INSTR(0x29, 0x22),
+	ILI9881C_COMMAND_INSTR(0x2a, 0x00),
+	ILI9881C_COMMAND_INSTR(0x2b, 0x00),
+	ILI9881C_COMMAND_INSTR(0x2c, 0x00),
+	ILI9881C_COMMAND_INSTR(0x2d, 0x00),
+	ILI9881C_COMMAND_INSTR(0x2e, 0x00),
+	ILI9881C_COMMAND_INSTR(0x2f, 0x00),
+	ILI9881C_COMMAND_INSTR(0x30, 0x00),
+	ILI9881C_COMMAND_INSTR(0x31, 0x00),
+	ILI9881C_COMMAND_INSTR(0x32, 0x00),
+	ILI9881C_COMMAND_INSTR(0x33, 0x00),
+	ILI9881C_COMMAND_INSTR(0x34, 0x04),
+	ILI9881C_COMMAND_INSTR(0x35, 0x00),
+	ILI9881C_COMMAND_INSTR(0x36, 0x00),
+	ILI9881C_COMMAND_INSTR(0x37, 0x00),
+	ILI9881C_COMMAND_INSTR(0x38, 0x3c),
+	ILI9881C_COMMAND_INSTR(0x39, 0x00),
+	ILI9881C_COMMAND_INSTR(0x3a, 0x00),
+	ILI9881C_COMMAND_INSTR(0x3b, 0x00),
+	ILI9881C_COMMAND_INSTR(0x3c, 0x00),
+	ILI9881C_COMMAND_INSTR(0x3d, 0x00),
+	ILI9881C_COMMAND_INSTR(0x3e, 0x00),
+	ILI9881C_COMMAND_INSTR(0x3f, 0x00),
+	ILI9881C_COMMAND_INSTR(0x40, 0x00),
+	ILI9881C_COMMAND_INSTR(0x41, 0x00),
+	ILI9881C_COMMAND_INSTR(0x42, 0x00),
+	ILI9881C_COMMAND_INSTR(0x43, 0x00),
+	ILI9881C_COMMAND_INSTR(0x44, 0x00),
+	ILI9881C_COMMAND_INSTR(0x50, 0x10),
+	ILI9881C_COMMAND_INSTR(0x51, 0x32),
+	ILI9881C_COMMAND_INSTR(0x52, 0x54),
+	ILI9881C_COMMAND_INSTR(0x53, 0x76),
+	ILI9881C_COMMAND_INSTR(0x54, 0x98),
+	ILI9881C_COMMAND_INSTR(0x55, 0xba),
+	ILI9881C_COMMAND_INSTR(0x56, 0x10),
+	ILI9881C_COMMAND_INSTR(0x57, 0x32),
+	ILI9881C_COMMAND_INSTR(0x58, 0x54),
+	ILI9881C_COMMAND_INSTR(0x59, 0x76),
+	ILI9881C_COMMAND_INSTR(0x5a, 0x98),
+	ILI9881C_COMMAND_INSTR(0x5b, 0xba),
+	ILI9881C_COMMAND_INSTR(0x5c, 0xdc),
+	ILI9881C_COMMAND_INSTR(0x5d, 0xfe),
+	ILI9881C_COMMAND_INSTR(0x5e, 0x00),
+	ILI9881C_COMMAND_INSTR(0x5f, 0x01),
+	ILI9881C_COMMAND_INSTR(0x60, 0x00),
+	ILI9881C_COMMAND_INSTR(0x61, 0x15),
+	ILI9881C_COMMAND_INSTR(0x62, 0x14),
+	ILI9881C_COMMAND_INSTR(0x63, 0x0e),
+	ILI9881C_COMMAND_INSTR(0x64, 0x0f),
+	ILI9881C_COMMAND_INSTR(0x65, 0x0c),
+	ILI9881C_COMMAND_INSTR(0x66, 0x0d),
+	ILI9881C_COMMAND_INSTR(0x67, 0x06),
+	ILI9881C_COMMAND_INSTR(0x68, 0x02),
+	ILI9881C_COMMAND_INSTR(0x69, 0x02),
+	ILI9881C_COMMAND_INSTR(0x6a, 0x02),
+	ILI9881C_COMMAND_INSTR(0x6b, 0x02),
+	ILI9881C_COMMAND_INSTR(0x6c, 0x02),
+	ILI9881C_COMMAND_INSTR(0x6d, 0x02),
+	ILI9881C_COMMAND_INSTR(0x6e, 0x07),
+	ILI9881C_COMMAND_INSTR(0x6f, 0x02),
+	ILI9881C_COMMAND_INSTR(0x70, 0x02),
+	ILI9881C_COMMAND_INSTR(0x71, 0x02),
+	ILI9881C_COMMAND_INSTR(0x72, 0x02),
+	ILI9881C_COMMAND_INSTR(0x73, 0x02),
+	ILI9881C_COMMAND_INSTR(0x74, 0x02),
+	ILI9881C_COMMAND_INSTR(0x75, 0x01),
+	ILI9881C_COMMAND_INSTR(0x76, 0x00),
+	ILI9881C_COMMAND_INSTR(0x77, 0x14),
+	ILI9881C_COMMAND_INSTR(0x78, 0x15),
+	ILI9881C_COMMAND_INSTR(0x79, 0x0e),
+	ILI9881C_COMMAND_INSTR(0x7a, 0x0f),
+	ILI9881C_COMMAND_INSTR(0x7b, 0x0c),
+	ILI9881C_COMMAND_INSTR(0x7c, 0x0d),
+	ILI9881C_COMMAND_INSTR(0x7d, 0x06),
+	ILI9881C_COMMAND_INSTR(0x7e, 0x02),
+	ILI9881C_COMMAND_INSTR(0x7f, 0x02),
+	ILI9881C_COMMAND_INSTR(0x80, 0x02),
+	ILI9881C_COMMAND_INSTR(0x81, 0x02),
+	ILI9881C_COMMAND_INSTR(0x82, 0x02),
+	ILI9881C_COMMAND_INSTR(0x83, 0x02),
+	ILI9881C_COMMAND_INSTR(0x84, 0x07),
+	ILI9881C_COMMAND_INSTR(0x85, 0x02),
+	ILI9881C_COMMAND_INSTR(0x86, 0x02),
+	ILI9881C_COMMAND_INSTR(0x87, 0x02),
+	ILI9881C_COMMAND_INSTR(0x88, 0x02),
+	ILI9881C_COMMAND_INSTR(0x89, 0x02),
+	ILI9881C_COMMAND_INSTR(0x8a, 0x02),
+	ILI9881C_SWITCH_PAGE_INSTR(4),
+	ILI9881C_COMMAND_INSTR(0x6c, 0x15),
+	ILI9881C_COMMAND_INSTR(0x6e, 0x2a),
+	ILI9881C_COMMAND_INSTR(0x6f, 0x35),
+	ILI9881C_COMMAND_INSTR(0x3a, 0x24),
+	ILI9881C_COMMAND_INSTR(0x8d, 0x14),
+	ILI9881C_COMMAND_INSTR(0x87, 0xba),
+	ILI9881C_COMMAND_INSTR(0x26, 0x76),
+	ILI9881C_COMMAND_INSTR(0xb2, 0xd1),
+	ILI9881C_COMMAND_INSTR(0xb5, 0x27),
+	ILI9881C_COMMAND_INSTR(0x31, 0x75),
+	ILI9881C_COMMAND_INSTR(0x30, 0x03),
+	ILI9881C_COMMAND_INSTR(0x3b, 0x98),
+	ILI9881C_COMMAND_INSTR(0x35, 0x1f),
+	ILI9881C_COMMAND_INSTR(0x33, 0x14),
+	ILI9881C_COMMAND_INSTR(0x7a, 0x0f),
+	ILI9881C_COMMAND_INSTR(0x38, 0x02),
+	ILI9881C_COMMAND_INSTR(0x39, 0x00),
+	ILI9881C_SWITCH_PAGE_INSTR(1),
+	ILI9881C_COMMAND_INSTR(0x22, 0x0a),
+	ILI9881C_COMMAND_INSTR(0x31, 0x00),
+	ILI9881C_COMMAND_INSTR(0x53, 0x40),
+	ILI9881C_COMMAND_INSTR(0x55, 0x4e),
+	ILI9881C_COMMAND_INSTR(0x50, 0xc7),
+	ILI9881C_COMMAND_INSTR(0x51, 0xc2),
+	ILI9881C_COMMAND_INSTR(0x60, 0x26),
+	ILI9881C_COMMAND_INSTR(0x63, 0x00),
+	ILI9881C_COMMAND_INSTR(0xa0, 0x00),
+	ILI9881C_COMMAND_INSTR(0xa1, 0x16),
+	ILI9881C_COMMAND_INSTR(0xa2, 0x24),
+	ILI9881C_COMMAND_INSTR(0xa3, 0x13),
+	ILI9881C_COMMAND_INSTR(0xa4, 0x16),
+	ILI9881C_COMMAND_INSTR(0xa5, 0x2a),
+	ILI9881C_COMMAND_INSTR(0xa6, 0x1e),
+	ILI9881C_COMMAND_INSTR(0xa7, 0x20),
+	ILI9881C_COMMAND_INSTR(0xa8, 0x8d),
+	ILI9881C_COMMAND_INSTR(0xa9, 0x1d),
+	ILI9881C_COMMAND_INSTR(0xaa, 0x29),
+	ILI9881C_COMMAND_INSTR(0xab, 0x82),
+	ILI9881C_COMMAND_INSTR(0xac, 0x1f),
+	ILI9881C_COMMAND_INSTR(0xad, 0x20),
+	ILI9881C_COMMAND_INSTR(0xae, 0x54),
+	ILI9881C_COMMAND_INSTR(0xaf, 0x29),
+	ILI9881C_COMMAND_INSTR(0xb0, 0x2c),
+	ILI9881C_COMMAND_INSTR(0xb1, 0x51),
+	ILI9881C_COMMAND_INSTR(0xb2, 0x5c),
+	ILI9881C_COMMAND_INSTR(0xb3, 0x23),
+	ILI9881C_COMMAND_INSTR(0xc0, 0x00),
+	ILI9881C_COMMAND_INSTR(0xc1, 0x15),
+	ILI9881C_COMMAND_INSTR(0xc2, 0x24),
+	ILI9881C_COMMAND_INSTR(0xc3, 0x13),
+	ILI9881C_COMMAND_INSTR(0xc4, 0x17),
+	ILI9881C_COMMAND_INSTR(0xc5, 0x29),
+	ILI9881C_COMMAND_INSTR(0xc6, 0x1e),
+	ILI9881C_COMMAND_INSTR(0xc7, 0x1f),
+	ILI9881C_COMMAND_INSTR(0xc8, 0x8c),
+	ILI9881C_COMMAND_INSTR(0xc9, 0x1d),
+	ILI9881C_COMMAND_INSTR(0xca, 0x29),
+	ILI9881C_COMMAND_INSTR(0xcb, 0x81),
+	ILI9881C_COMMAND_INSTR(0xcc, 0x1f),
+	ILI9881C_COMMAND_INSTR(0xcd, 0x20),
+	ILI9881C_COMMAND_INSTR(0xce, 0x55),
+	ILI9881C_COMMAND_INSTR(0xcf, 0x29),
+	ILI9881C_COMMAND_INSTR(0xd0, 0x2d),
+	ILI9881C_COMMAND_INSTR(0xd1, 0x51),
+	ILI9881C_COMMAND_INSTR(0xd2, 0x5c),
+	ILI9881C_COMMAND_INSTR(0xd3, 0x23),
 };
 
 static const struct ili9881c_instr tl050hdv35_init[] = {
@@ -1661,17 +1864,29 @@ static int ili9881c_prepare(struct drm_panel *panel)
 	gpiod_set_value_cansleep(ctx->reset, 0);
 	msleep(20);
 
+	if (ctx->desc->soft_reset) {
+		ili9881c_switch_page(&mctx, 0);
+		mipi_dsi_dcs_soft_reset_multi(&mctx);
+		mipi_dsi_msleep(&mctx, 5);
+	}
+
 	for (i = 0; i < ctx->desc->init_length; i++) {
 		const struct ili9881c_instr *instr = &ctx->desc->init[i];
 
-		if (instr->op == ILI9881C_SWITCH_PAGE)
+		if (instr->op == ILI9881C_SWITCH_PAGE) {
 			ili9881c_switch_page(&mctx, instr->arg.page);
-		else if (instr->op == ILI9881C_COMMAND)
+			if (ctx->desc->page_switch_delay_ms)
+				mipi_dsi_msleep(&mctx,
+						ctx->desc->page_switch_delay_ms);
+		} else if (instr->op == ILI9881C_COMMAND) {
 			ili9881c_send_cmd_data(&mctx, instr->arg.cmd.cmd,
 					       instr->arg.cmd.data);
+		}
 	}
 
 	ili9881c_switch_page(&mctx, 0);
+	if (ctx->desc->page_switch_delay_ms)
+		mipi_dsi_msleep(&mctx, ctx->desc->page_switch_delay_ms);
 
 	if (ctx->address_mode)
 		ili9881c_send_cmd_data(&mctx, MIPI_DCS_SET_ADDRESS_MODE,
@@ -1753,6 +1968,23 @@ static const struct drm_display_mode kd050hdfia020_default_mode = {
 
 	.width_mm	= 62,
 	.height_mm	= 110,
+};
+
+static const struct drm_display_mode mf_070zimacaa0_default_mode = {
+	.clock		= 83979,
+
+	.hdisplay	= 800,
+	.hsync_start	= 800 + 100,
+	.hsync_end	= 800 + 100 + 50,
+	.htotal		= 800 + 100 + 50 + 100,
+
+	.vdisplay	= 1280,
+	.vsync_start	= 1280 + 20,
+	.vsync_end	= 1280 + 20 + 3,
+	.vtotal		= 1280 + 20 + 3 + 30,
+
+	.width_mm	= 94,
+	.height_mm	= 151,
 };
 
 static const struct drm_display_mode tl050hdv35_default_mode = {
@@ -1927,7 +2159,7 @@ static int ili9881c_dsi_probe(struct mipi_dsi_device *dsi)
 		ctx->orientation = DRM_MODE_PANEL_ORIENTATION_NORMAL;
 	}
 
-	ctx->panel.prepare_prev_first = true;
+	ctx->panel.prepare_prev_first = !ctx->desc->init_before_host;
 
 	ret = drm_panel_of_backlight(&ctx->panel);
 	if (ret)
@@ -1972,6 +2204,18 @@ static const struct ili9881c_desc kd050hdfia020_desc = {
 	.mode = &kd050hdfia020_default_mode,
 	.mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_SYNC_PULSE |
 		      MIPI_DSI_MODE_LPM,
+};
+
+static const struct ili9881c_desc mf_070zimacaa0_desc = {
+	.init = mf_070zimacaa0_init,
+	.init_length = ARRAY_SIZE(mf_070zimacaa0_init),
+	.mode = &mf_070zimacaa0_default_mode,
+	.mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_SYNC_PULSE |
+		      MIPI_DSI_CLOCK_NON_CONTINUOUS,
+	.lanes = 4,
+	.init_before_host = true,
+	.soft_reset = true,
+	.page_switch_delay_ms = 30,
 };
 
 static const struct ili9881c_desc tl050hdv35_desc = {
@@ -2021,6 +2265,7 @@ static const struct of_device_id ili9881c_of_match[] = {
 	{ .compatible = "bananapi,lhr050h41", .data = &lhr050h41_desc },
 	{ .compatible = "bestar,bsd1218-a101kl68", .data = &bsd1218_a101kl68_desc },
 	{ .compatible = "feixin,k101-im2byl02", .data = &k101_im2byl02_desc },
+	{ .compatible = "microtips,mf-070zimacaa0", .data = &mf_070zimacaa0_desc },
 	{ .compatible = "startek,kd050hdfia020", .data = &kd050hdfia020_desc },
 	{ .compatible = "tdo,tl050hdv35", .data = &tl050hdv35_desc },
 	{ .compatible = "wanchanglong,w552946aba", .data = &w552946aba_desc },
