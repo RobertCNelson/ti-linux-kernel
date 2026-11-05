@@ -44,6 +44,8 @@ struct ili9881c_desc {
 	const unsigned long mode_flags;
 	u8 default_address_mode;
 	unsigned int lanes;
+	/* Init before the DSI host starts video, with the link in LP-11. */
+	bool init_before_host;
 };
 
 struct ili9881c {
@@ -1927,7 +1929,7 @@ static int ili9881c_dsi_probe(struct mipi_dsi_device *dsi)
 		ctx->orientation = DRM_MODE_PANEL_ORIENTATION_NORMAL;
 	}
 
-	ctx->panel.prepare_prev_first = true;
+	ctx->panel.prepare_prev_first = !ctx->desc->init_before_host;
 
 	ret = drm_panel_of_backlight(&ctx->panel);
 	if (ret)
