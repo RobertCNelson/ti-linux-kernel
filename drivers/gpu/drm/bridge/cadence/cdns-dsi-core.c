@@ -1222,7 +1222,7 @@ static ssize_t cdns_dsi_transfer(struct mipi_dsi_host *host,
 	}
 
 out:
-	pm_runtime_put(host->dev);
+	pm_runtime_put_autosuspend(host->dev);
 	return ret;
 }
 
@@ -1350,6 +1350,9 @@ static int cdns_dsi_drm_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_disable_pclk;
 
+	/* Keep the link up across a burst of commands. */
+	pm_runtime_set_autosuspend_delay(&pdev->dev, 50);
+	pm_runtime_use_autosuspend(&pdev->dev);
 	pm_runtime_enable(&pdev->dev);
 	dsi->base.dev = &pdev->dev;
 	dsi->base.ops = &cdns_dsi_ops;
@@ -1377,6 +1380,7 @@ err_deinit_platform:
 
 err_disable_runtime_pm:
 	pm_runtime_disable(&pdev->dev);
+	pm_runtime_dont_use_autosuspend(&pdev->dev);
 
 err_disable_pclk:
 	clk_disable_unprepare(dsi->dsi_p_clk);
@@ -1394,6 +1398,7 @@ static void cdns_dsi_drm_remove(struct platform_device *pdev)
 		dsi->platform_ops->deinit(dsi);
 
 	pm_runtime_disable(&pdev->dev);
+	pm_runtime_dont_use_autosuspend(&pdev->dev);
 }
 
 static const struct of_device_id cdns_dsi_of_match[] = {
