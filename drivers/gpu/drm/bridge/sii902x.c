@@ -905,6 +905,7 @@ static int sii902x_audio_codec_init(struct sii902x *sii902x,
 		.i2s = 1, /* Only i2s support for now. */
 		.spdif = 0,
 		.max_i2s_channels = 0,
+		.no_i2s_capture = 1,
 		.no_capture_mute = 1,
 	};
 	u8 lanes[4];
