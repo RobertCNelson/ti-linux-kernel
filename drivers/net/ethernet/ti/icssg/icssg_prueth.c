@@ -1194,6 +1194,9 @@ static int emac_ndo_stop(struct net_device *ndev)
 	prueth_cleanup_rx_chns(emac);
 	prueth_cleanup_tx_chns(emac);
 
+	/* Cleanup RX flow classification rules */
+	icssg_rxnfc_rule_cleanup(emac);
+
 	prueth->emacs_initialized--;
 
 	return 0;
@@ -1721,6 +1724,9 @@ static int prueth_netdev_init(struct prueth *prueth,
 		goto free_ndev;
 	}
 	INIT_WORK(&emac->rx_mode_work, emac_ndo_set_rx_mode_work);
+
+	/* Initialize RX flow classification */
+	icssg_rxnfc_rule_init(emac);
 
 	INIT_DELAYED_WORK(&emac->stats_work, icssg_stats_work_handler);
 

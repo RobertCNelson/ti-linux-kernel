@@ -392,6 +392,52 @@ static void emac_get_mm_stats(struct net_device *ndev,
 	s->MACMergeFrameSmdErrorCount = emac_get_stat_by_name(emac, "FW_PREEMPT_BAD_FRAG");
 }
 
+static int emac_get_rxnfc(struct net_device *ndev, struct ethtool_rxnfc *info,
+			  u32 *rule_locs)
+{
+	struct prueth_emac *emac = netdev_priv(ndev);
+	int ret = 0;
+
+	switch (info->cmd) {
+	case ETHTOOL_GRXRINGS:
+		info->data = emac->rx_flow_num;
+		break;
+	case ETHTOOL_GRXCLSRLCNT:
+		info->rule_cnt = emac->rxnfc.rxnfc_rule_count;
+		info->data = ICSSG_RXNFC_MAX_RULES | RX_CLS_LOC_SPECIAL;
+		break;
+	case ETHTOOL_GRXCLSRULE:
+		ret = icssg_rxnfc_rule_get(emac, info->fs.location, &info->fs);
+		break;
+	case ETHTOOL_GRXCLSRLALL: {
+		u32 rule_cnt = 0;
+
+		ret = icssg_rxnfc_rule_get_all(emac, rule_locs, &rule_cnt);
+		if (!ret)
+			info->rule_cnt = rule_cnt;
+		break;
+	}
+	default:
+		return -EOPNOTSUPP;
+	}
+
+	return ret;
+}
+
+static int emac_set_rxnfc(struct net_device *ndev, struct ethtool_rxnfc *info)
+{
+	struct prueth_emac *emac = netdev_priv(ndev);
+
+	switch (info->cmd) {
+	case ETHTOOL_SRXCLSRLINS:
+		return icssg_rxnfc_rule_add(emac, info);
+	case ETHTOOL_SRXCLSRLDEL:
+		return icssg_rxnfc_rule_del(emac, info->fs.location);
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+
 const struct ethtool_ops icssg_ethtool_ops = {
 	.get_drvinfo = emac_get_drvinfo,
 	.get_msglevel = emac_get_msglevel,
@@ -418,5 +464,7 @@ const struct ethtool_ops icssg_ethtool_ops = {
 	.get_mm = emac_get_mm,
 	.set_mm = emac_set_mm,
 	.get_mm_stats = emac_get_mm_stats,
+	.get_rxnfc = emac_get_rxnfc,
+	.set_rxnfc = emac_set_rxnfc,
 };
 EXPORT_SYMBOL_GPL(icssg_ethtool_ops);
