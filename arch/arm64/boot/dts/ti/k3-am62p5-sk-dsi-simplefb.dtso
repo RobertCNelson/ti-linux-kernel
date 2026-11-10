@@ -20,8 +20,7 @@
 				<&k3_pds 231 TI_SCI_PD_EXCLUSIVE>,  /* DSI0 */
 				<&k3_pds 238 TI_SCI_PD_EXCLUSIVE>;  /* DPHY_TX0 */
 		clocks = <&k3_clks 232 8>,       /* DSS1 fck */
-			 <&dss1_vp1_clk>,        /* DSS1 vp1 */
-			 <&k3_clks 232 4>;       /* DSS1 vp2 */
+			 <&k3_clks 232 4>;       /* DSS1 vp2 (DSI) */
 		display = <&dss1>;
 		status = "disabled";
 		bootph-all;
