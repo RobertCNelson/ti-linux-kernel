@@ -179,6 +179,9 @@ static int prueth_emac_start(struct prueth *prueth)
 		}
 	}
 
+	prueth->fw_offload_running = prueth->is_switch_mode ||
+				     prueth->is_hsr_offload_mode;
+
 	return 0;
 
 unwind_slices:
@@ -194,6 +197,8 @@ unwind_slices:
 static void prueth_emac_stop(struct prueth *prueth)
 {
 	int slice;
+
+	prueth->fw_offload_running = false;
 
 	for (slice = 0; slice < PRUETH_NUM_MACS; slice++) {
 		prueth_shutdown(prueth->txpru[slice]);
