@@ -991,6 +991,8 @@ static int e5010_init_device(struct e5010_dev *e5010)
 {
 	int ret = 0;
 
+	e5010->last_context_run = NULL;
+
 	/*TODO: Set MMU in bypass mode until support for the same is added in driver*/
 	e5010_hw_bypass_mmu(e5010->mmu_base, 1);
 
@@ -1492,7 +1494,9 @@ static void e5010_device_run(void *priv)
 
 device_busy_err:
 	e5010_reset(e5010->dev, e5010->core_base, e5010->mmu_base);
-
+	ret = e5010_init_device(e5010);
+	if (ret)
+		v4l2_err(&e5010->v4l2_dev, "failed to initialize device after reset\n");
 no_ready_buf_err:
 	if (s_vb) {
 		v4l2_m2m_src_buf_remove_by_buf(ctx->fh.m2m_ctx, s_vb);
@@ -1518,6 +1522,13 @@ static int e5010_runtime_resume(struct device *dev)
 	ret = clk_prepare_enable(e5010->clk);
 	if (ret < 0) {
 		v4l2_err(&e5010->v4l2_dev, "failed to enable clock\n");
+		return ret;
+	}
+
+	ret = e5010_init_device(e5010);
+	if (ret) {
+		dev_err(dev, "Failed to re-enable e5010 device\n");
+		clk_disable_unprepare(e5010->clk);
 		return ret;
 	}
 
@@ -1552,12 +1563,6 @@ static int e5010_resume(struct device *dev)
 	ret = pm_runtime_force_resume(dev);
 	if (ret < 0)
 		return ret;
-
-	ret = e5010_init_device(e5010);
-	if (ret) {
-		dev_err(dev, "Failed to re-enable e5010 device\n");
-		return ret;
-	}
 
 	v4l2_m2m_resume(e5010->m2m_dev);
 
