@@ -589,10 +589,10 @@ EXPORT_SYMBOL_GPL(icssg_config);
 
 /* Bitmask for ICSSG r30 commands */
 static const struct icssg_r30_cmd emac_r32_bitmask[] = {
-	{{0xffff0004, 0xffff0100, 0xffff0004, EMAC_NONE}},	/* EMAC_PORT_DISABLE */
-	{{0xfffb0040, 0xfeff0200, 0xfeff0200, EMAC_NONE}},	/* EMAC_PORT_BLOCK */
-	{{0xffbb0000, 0xfcff0000, 0xdcfb0000, EMAC_NONE}},	/* EMAC_PORT_FORWARD */
-	{{0xffbb0000, 0xfcff0000, 0xfcff2000, EMAC_NONE}},	/* EMAC_PORT_FORWARD_WO_LEARNING */
+	{{0xffbf0004, 0xfdff0100, 0xfff70004, 0xfdff0100}},	/* EMAC_PORT_DISABLE */
+	{{0xfffb0040, 0xfeff0200, 0xfffb0008, 0xfeff0200}},	/* EMAC_PORT_BLOCK */
+	{{0xffbb0000, 0xfcff0000, 0xdff30000, 0xfcff0000}},	/* EMAC_PORT_FORWARD */
+	{{0xffbb0000, 0xfcff0000, 0xfff32000, 0xfcff0000}},	/* EMAC_PORT_FORWARD_WO_LEARNING */
 	{{0xffff0001, EMAC_NONE,  EMAC_NONE, EMAC_NONE}},	/* ACCEPT ALL */
 	{{0xfffe0002, EMAC_NONE,  EMAC_NONE, EMAC_NONE}},	/* ACCEPT TAGGED */
 	{{0xfffc0000, EMAC_NONE,  EMAC_NONE, EMAC_NONE}},	/* ACCEPT UNTAGGED and PRIO */
@@ -615,8 +615,10 @@ static const struct icssg_r30_cmd emac_r32_bitmask[] = {
 int icssg_set_port_state(struct prueth_emac *emac,
 			 enum icssg_port_state_cmd cmd)
 {
+	struct prueth *prueth = emac->prueth;
 	struct icssg_r30_cmd __iomem *p;
 	int ret = -ETIMEDOUT;
+	int num_words;
 	int done = 0;
 	int i;
 
@@ -630,7 +632,9 @@ int icssg_set_port_state(struct prueth_emac *emac,
 	/* only one command at a time allowed to firmware */
 	mutex_lock(&emac->cmd_lock);
 
-	for (i = 0; i < 4; i++)
+	/* The fourth word is only used by the switch/HSR/PRP firmware */
+	num_words = prueth->fw_offload_running ? 4 : 3;
+	for (i = 0; i < num_words; i++)
 		writel(emac_r32_bitmask[cmd].cmd[i], &p->cmd[i]);
 
 	/* wait for done */

@@ -360,6 +360,7 @@ struct icssg_firmwares {
  * @prueth_switchdev_bl_nb: switchdev blocking notifier block
  * @is_switch_mode: flag to indicate if device is in Switch mode
  * @is_hsr_offload_mode: flag to indicate if device is in hsr offload mode
+ * @fw_offload_running: flag to indicate if the loaded firmware is switch/HSR/PRP
  * @is_switchmode_supported: indicates platform support for switch mode
  * @switch_id: ID for mapping switch ports to bridge
  * @default_vlan: Default VLAN for host
@@ -405,6 +406,7 @@ struct prueth {
 	struct notifier_block prueth_switchdev_bl_nb;
 	bool is_switch_mode;
 	bool is_hsr_offload_mode;
+	bool fw_offload_running;
 	bool is_switchmode_supported;
 	unsigned char switch_id[MAX_PHYS_ITEM_ID_LEN];
 	int default_vlan;
