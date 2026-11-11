@@ -74,6 +74,7 @@ dtb-$(CONFIG_ARCH_K3) += k3-am62l3-evm-dsi-simplefb.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62l3-evm-hdmi-simplefb.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62l3-evm-lpm-wkup-sources.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62l3-evm-m2-cc3351.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-am62l3-evm-microtips-mf070zima-lcd3.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62l3-evm-nand.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62l3-evm-tida-010939.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62l3-evm-idle-states.dtbo
@@ -104,7 +105,8 @@ dtb-$(CONFIG_ARCH_K3) += k3-am62p5-sk-microtips-mf070zima-lcd3.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62p5-sk-dsi-rpi-7inch-panel.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62p5-sk-dss-shared-mode.dtbo
 dtb-$(CONFIG_ARCH_K3) += k3-am62p5-sk-dsi-simplefb.dtbo
-dtb-$(CONFIG_ARCH_K3) += k3-am62p5-sk-hdmi-oldi-simplefb.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-am62p5-sk-hdmi-simplefb.dtbo
+dtb-$(CONFIG_ARCH_K3) += k3-am62p5-sk-oldi-simplefb.dtbo
 
 # Common overlays for SK-AM62* family of boards
 dtb-$(CONFIG_ARCH_K3) += k3-am62x-sk-csi2-ov5640.dtbo
@@ -445,6 +447,8 @@ k3-j784s4-evm-usxgmii-exp1-exp2-dtbs := k3-j784s4-evm.dtb \
 	k3-j784s4-evm-usxgmii-exp1-exp2.dtbo
 k3-am62l3-evm-dsi-rpi-7inch-panel-dtbs := k3-am62l3-evm.dtb \
 	k3-am62l3-evm-dsi-rpi-7inch-panel.dtbo
+k3-am62l3-evm-microtips-mf070zima-lcd3-dtbs := k3-am62l3-evm.dtb \
+	k3-am62l3-evm-microtips-mf070zima-lcd3.dtbo
 k3-am62l3-evm-nand-dtbs := k3-am62l3-evm.dtb \
 	k3-am62l3-evm-nand.dtbo
 k3-am62l3-evm-tida-010939-dtbs := k3-am62l3-evm.dtb \
@@ -535,6 +539,7 @@ dtb- += k3-am625-beagleplay-csi2-ov5640.dtb \
 	k3-j784s4-evm-usb0-type-a.dtb \
 	k3-j784s4-evm-usxgmii-exp1-exp2.dtb \
 	k3-am62l3-evm-dsi-rpi-7inch-panel.dtb \
+	k3-am62l3-evm-microtips-mf070zima-lcd3.dtb \
 	k3-am62l3-evm-tida-010939.dtb \
 	k3-am62l3-evm-idle-states.dtb
 

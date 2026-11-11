@@ -11,6 +11,7 @@
 #include <linux/bpf.h>
 #include <linux/bpf_trace.h>
 #include <linux/etherdevice.h>
+#include <linux/ethtool.h>
 #include <linux/genalloc.h>
 #include <linux/if_vlan.h>
 #include <linux/if_hsr.h>
@@ -144,18 +145,27 @@ struct prueth_tx_chn {
 	bool irq_disabled;
 };
 
-struct prueth_rx_chn {
-	struct device *dev;
-	struct device *dma_dev;
-	struct k3_cppi_desc_pool *desc_pool;
-	struct k3_udma_glue_rx_channel *rx_chn;
-	u32 descs_num;
-	unsigned int irq[ICSSG_MAX_RFLOWS];	/* separate irq per flow */
-	char name[32];
+struct prueth_rx_flow {
+	u32 id;
+	struct prueth_emac *emac;
+	struct napi_struct napi_rx;
+	unsigned int irq;
+	bool irq_disabled;
+	struct hrtimer rx_hrtimer;
+	unsigned long rx_pace_timeout_ns;
 	struct page_pool *pg_pool;
 	struct xdp_rxq_info xdp_rxq;
 	struct xsk_buff_pool *xsk_pool;
-	bool irq_disabled;
+	char name[32];
+};
+
+struct prueth_rx_chn {
+	struct device *dma_dev;
+	struct k3_cppi_desc_pool *desc_pool;
+	struct k3_udma_glue_rx_channel *rx_chn;
+	struct prueth_emac *emac;
+	u32 descs_num;
+	struct prueth_rx_flow flows[PRUETH_MAX_RX_FLOWS];
 };
 
 enum prueth_swdata_type {
@@ -174,6 +184,7 @@ enum prueth_tx_buff_type {
 
 struct prueth_swdata {
 	enum prueth_swdata_type type;
+	u32 flow_id;
 	union prueth_data {
 		struct sk_buff *skb;
 		struct page *page;
@@ -182,11 +193,6 @@ struct prueth_swdata {
 		struct xdp_buff *xdp;
 	} data;
 };
-
-/* There are 4 Tx DMA channels, but the highest priority is CH3 (thread 3)
- * and lower three are lower priority channels or threads.
- */
-#define PRUETH_MAX_TX_QUEUES	4
 
 #define PRUETH_MAX_TX_TS_REQUESTS	50 /* Max simultaneous TX_TS requests */
 
@@ -199,13 +205,32 @@ struct prueth_swdata {
 /* Minimum coalesce time in usecs for both Tx and Rx */
 #define ICSSG_MIN_COALESCE_USECS 20
 
+/* RX flow classification (ethtool) */
+#define ICSSG_RXNFC_MAX_RULES    15      /* Max user-installable rules */
+#define ICSSG_FT3_RESERVED_SLOTS BIT(14) /* Slot 14 reserved for HSR/PRP */
+
+/* RX flow classification rule structure */
+struct icssg_rxnfc_rule {
+	struct list_head list;
+	struct ethtool_rx_flow_spec flow_spec;  /* User-provided filter */
+	u16 ft3_slot;                            /* Allocated FT3 slot (0-15, excluding 14) */
+	int location;                            /* Rule location (user-provided) */
+	u32 queue_index;                         /* RX flow to route matches to */
+};
+
+struct prueth_rxnfc {
+	struct list_head rules;
+	struct mutex rxnfc_lock;
+	unsigned int rxnfc_rule_count;
+	u16 ft3_slots_used;
+};
+
 /* data for each emac port */
 struct prueth_emac {
 	bool is_sr1;
 	struct prueth *prueth;
 	struct net_device *ndev;
 	u8 mac_addr[6];
-	struct napi_struct napi_rx;
 	u32 msg_enable;
 
 	int link;
@@ -228,6 +253,7 @@ struct prueth_emac {
 	struct prueth_rx_chn rx_chns;
 	int rx_flow_id_base;
 	int tx_ch_num;
+	int rx_flow_num;
 
 	/* SR1.0 Management channel */
 	struct prueth_rx_chn rx_mgm_chn;
@@ -265,15 +291,15 @@ struct prueth_emac {
 	u64 stats[ICSSG_NUM_MIIG_STATS];
 	u64 pa_stats[ICSSG_NUM_PA_STATS];
 
-	/* RX IRQ Coalescing Related */
-	struct hrtimer rx_hrtimer;
-	unsigned long rx_pace_timeout_ns;
-
 	struct netdev_hw_addr_list vlan_mcast_list[MAX_VLAN_ID];
 	struct bpf_prog *xdp_prog;
 	struct xdp_attachment_info xdpi;
 	int xsk_qid;
 	struct prueth_qos qos;
+	unsigned long *xsk_queues;
+
+	/* RX flow classification via ethtool */
+	struct prueth_rxnfc rxnfc;
 };
 
 /* The buf includes headroom compatible with both skb and xdpf */
@@ -334,6 +360,7 @@ struct icssg_firmwares {
  * @prueth_switchdev_bl_nb: switchdev blocking notifier block
  * @is_switch_mode: flag to indicate if device is in Switch mode
  * @is_hsr_offload_mode: flag to indicate if device is in hsr offload mode
+ * @fw_offload_running: flag to indicate if the loaded firmware is switch/HSR/PRP
  * @is_switchmode_supported: indicates platform support for switch mode
  * @switch_id: ID for mapping switch ports to bridge
  * @default_vlan: Default VLAN for host
@@ -379,6 +406,7 @@ struct prueth {
 	struct notifier_block prueth_switchdev_bl_nb;
 	bool is_switch_mode;
 	bool is_hsr_offload_mode;
+	bool fw_offload_running;
 	bool is_switchmode_supported;
 	unsigned char switch_id[MAX_PHYS_ITEM_ID_LEN];
 	int default_vlan;
@@ -419,6 +447,16 @@ static inline int prueth_emac_slice(struct prueth_emac *emac)
 		return -EINVAL;
 	}
 }
+
+/* RX flow classification functions */
+void icssg_rxnfc_rule_init(struct prueth_emac *emac);
+void icssg_rxnfc_rule_cleanup(struct prueth_emac *emac);
+int icssg_rxnfc_rule_add(struct prueth_emac *emac, struct ethtool_rxnfc *info);
+int icssg_rxnfc_rule_del(struct prueth_emac *emac, u32 location);
+int icssg_rxnfc_rule_get(struct prueth_emac *emac, u32 location,
+			 struct ethtool_rx_flow_spec *fs);
+int icssg_rxnfc_rule_get_all(struct prueth_emac *emac, u32 *rule_locs,
+			     u32 *rule_cnt);
 
 extern const struct ethtool_ops icssg_ethtool_ops;
 extern const struct dev_pm_ops prueth_dev_pm_ops;
@@ -477,30 +515,30 @@ void icssg_set_pvid(struct prueth *prueth, u8 vid, u8 port);
 int emac_fdb_flow_id_updated(struct prueth_emac *emac);
 #define prueth_napi_to_tx_chn(pnapi) \
 	container_of(pnapi, struct prueth_tx_chn, napi_tx)
+#define prueth_napi_to_rx_chn(pnapi) \
+	container_of(pnapi, struct prueth_rx_flow, napi_rx)
 
 void icssg_stats_work_handler(struct work_struct *work);
 void emac_update_hardware_stats(struct prueth_emac *emac);
 int emac_get_stat_by_name(struct prueth_emac *emac, char *stat_name);
 
 /* Common functions */
-void prueth_cleanup_rx_chns(struct prueth_emac *emac,
-			    struct prueth_rx_chn *rx_chn,
-			    int max_rflows);
+void prueth_cleanup_rx_chns(struct prueth_emac *emac);
 void prueth_cleanup_tx_chns(struct prueth_emac *emac);
 void prueth_ndev_del_tx_napi(struct prueth_emac *emac, int num);
+void prueth_ndev_del_rx_napi(struct prueth_emac *emac, int num);
 void prueth_xmit_free(struct prueth_tx_chn *tx_chn,
 		      struct cppi5_host_desc_t *desc);
 int emac_tx_complete_packets(struct prueth_emac *emac, int chn,
 			     int budget, bool *tdown);
 int prueth_ndev_add_tx_napi(struct prueth_emac *emac);
+int prueth_ndev_add_rx_napi(struct prueth_emac *emac);
 int prueth_init_tx_chns(struct prueth_emac *emac);
-int prueth_init_rx_chns(struct prueth_emac *emac,
-			struct prueth_rx_chn *rx_chn,
-			char *name, u32 max_rflows,
-			u32 max_desc_num);
+int prueth_init_rx_chns(struct prueth_emac *emac);
 int prueth_dma_rx_push_mapped(struct prueth_emac *emac,
 			      struct prueth_rx_chn *rx_chn,
-			      struct page *page, u32 buf_len);
+			      struct page *page, u32 buf_len,
+			      int flow_id);
 unsigned int prueth_rxbuf_total_len(unsigned int len);
 void emac_rx_timestamp(struct prueth_emac *emac,
 		       struct sk_buff *skb, u32 *psdata);
@@ -508,13 +546,11 @@ enum netdev_tx icssg_ndo_start_xmit(struct sk_buff *skb, struct net_device *ndev
 irqreturn_t prueth_rx_irq(int irq, void *dev_id);
 void prueth_cleanup_tx_ts(struct prueth_emac *emac);
 int icssg_napi_rx_poll(struct napi_struct *napi_rx, int budget);
-int prueth_prepare_rx_chan(struct prueth_emac *emac,
-			   struct prueth_rx_chn *chn,
-			   int buf_size);
+int prueth_prepare_rx_flow(struct prueth_emac *emac,
+			   int flow);
 void prueth_reset_tx_chan(struct prueth_emac *emac, int ch_num,
 			  bool free_skb);
-void prueth_reset_rx_chan(struct prueth_rx_chn *chn,
-			  int num_flows, bool disable);
+void prueth_reset_rx_chan(struct prueth_emac *emac, bool disable);
 void icssg_ndo_tx_timeout(struct net_device *ndev, unsigned int txqueue);
 int icssg_ndo_get_ts_config(struct net_device *ndev,
 			    struct kernel_hwtstamp_config *config);

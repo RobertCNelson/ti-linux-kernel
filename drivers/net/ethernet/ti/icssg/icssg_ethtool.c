@@ -139,13 +139,14 @@ static int emac_set_channels(struct net_device *ndev,
 {
 	struct prueth_emac *emac = netdev_priv(ndev);
 
-	/* Check if interface is up. Can change the num queues when
-	 * the interface is down.
+	/* Check if interface is up. Can't change the num queues when
+	 * the interface is up.
 	 */
 	if (netif_running(emac->ndev))
 		return -EBUSY;
 
 	emac->tx_ch_num = ch->tx_count;
+	emac->rx_flow_num = ch->rx_count;
 
 	if (emac->is_sr1)
 		emac->tx_ch_num++;
@@ -158,7 +159,7 @@ static void emac_get_channels(struct net_device *ndev,
 {
 	struct prueth_emac *emac = netdev_priv(ndev);
 
-	ch->max_rx = 1;
+	ch->max_rx = ICSSG_MAX_RFLOWS;
 	ch->max_tx = PRUETH_MAX_TX_QUEUES;
 
 	/* Disable multiple TX channels due to timeouts
@@ -166,7 +167,7 @@ static void emac_get_channels(struct net_device *ndev,
 	if (emac->is_sr1)
 		ch->max_tx = 1;
 
-	ch->rx_count = 1;
+	ch->rx_count = emac->rx_flow_num;
 	ch->tx_count = emac->tx_ch_num;
 
 	if (emac->is_sr1)
@@ -212,11 +213,13 @@ static int emac_get_coalesce(struct net_device *ndev,
 			     struct netlink_ext_ack *extack)
 {
 	struct prueth_emac *emac = netdev_priv(ndev);
+	struct prueth_rx_chn *rx_chn = &emac->rx_chns;
+	struct prueth_rx_flow *flow = &rx_chn->flows[0];
 	struct prueth_tx_chn *tx_chn;
 
 	tx_chn = &emac->tx_chns[0];
 
-	coal->rx_coalesce_usecs = emac->rx_pace_timeout_ns / 1000;
+	coal->rx_coalesce_usecs = flow->rx_pace_timeout_ns / 1000;
 	coal->tx_coalesce_usecs = tx_chn->tx_pace_timeout_ns / 1000;
 
 	return 0;
@@ -244,6 +247,8 @@ static int emac_set_coalesce(struct net_device *ndev,
 			     struct netlink_ext_ack *extack)
 {
 	struct prueth_emac *emac = netdev_priv(ndev);
+	struct prueth_rx_chn *rx_chn = &emac->rx_chns;
+	struct prueth_rx_flow *flow = &rx_chn->flows[0];
 	struct prueth *prueth = emac->prueth;
 	struct prueth_tx_chn *tx_chn;
 
@@ -263,7 +268,7 @@ static int emac_set_coalesce(struct net_device *ndev,
 		coal->tx_coalesce_usecs = ICSSG_MIN_COALESCE_USECS;
 	}
 
-	emac->rx_pace_timeout_ns = coal->rx_coalesce_usecs * 1000;
+	flow->rx_pace_timeout_ns = coal->rx_coalesce_usecs * 1000;
 	tx_chn->tx_pace_timeout_ns = coal->tx_coalesce_usecs * 1000;
 
 	return 0;
@@ -387,6 +392,52 @@ static void emac_get_mm_stats(struct net_device *ndev,
 	s->MACMergeFrameSmdErrorCount = emac_get_stat_by_name(emac, "FW_PREEMPT_BAD_FRAG");
 }
 
+static int emac_get_rxnfc(struct net_device *ndev, struct ethtool_rxnfc *info,
+			  u32 *rule_locs)
+{
+	struct prueth_emac *emac = netdev_priv(ndev);
+	int ret = 0;
+
+	switch (info->cmd) {
+	case ETHTOOL_GRXRINGS:
+		info->data = emac->rx_flow_num;
+		break;
+	case ETHTOOL_GRXCLSRLCNT:
+		info->rule_cnt = emac->rxnfc.rxnfc_rule_count;
+		info->data = ICSSG_RXNFC_MAX_RULES | RX_CLS_LOC_SPECIAL;
+		break;
+	case ETHTOOL_GRXCLSRULE:
+		ret = icssg_rxnfc_rule_get(emac, info->fs.location, &info->fs);
+		break;
+	case ETHTOOL_GRXCLSRLALL: {
+		u32 rule_cnt = 0;
+
+		ret = icssg_rxnfc_rule_get_all(emac, rule_locs, &rule_cnt);
+		if (!ret)
+			info->rule_cnt = rule_cnt;
+		break;
+	}
+	default:
+		return -EOPNOTSUPP;
+	}
+
+	return ret;
+}
+
+static int emac_set_rxnfc(struct net_device *ndev, struct ethtool_rxnfc *info)
+{
+	struct prueth_emac *emac = netdev_priv(ndev);
+
+	switch (info->cmd) {
+	case ETHTOOL_SRXCLSRLINS:
+		return icssg_rxnfc_rule_add(emac, info);
+	case ETHTOOL_SRXCLSRLDEL:
+		return icssg_rxnfc_rule_del(emac, info->fs.location);
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+
 const struct ethtool_ops icssg_ethtool_ops = {
 	.get_drvinfo = emac_get_drvinfo,
 	.get_msglevel = emac_get_msglevel,
@@ -413,5 +464,7 @@ const struct ethtool_ops icssg_ethtool_ops = {
 	.get_mm = emac_get_mm,
 	.set_mm = emac_set_mm,
 	.get_mm_stats = emac_get_mm_stats,
+	.get_rxnfc = emac_get_rxnfc,
+	.set_rxnfc = emac_set_rxnfc,
 };
 EXPORT_SYMBOL_GPL(icssg_ethtool_ops);

@@ -3,9 +3,9 @@
  * Microtips integrated DSI panel (MF-070ZIMACAA0) and touch DT overlay for AM62P5-SK
  *
  * AM62P5-SK EVM: https://www.ti.com/tool/SK-AM62P-LP
- * Panel: https://simplespec.microtipsusa.com/uploads/spec/datasheetFile/3004/13-070ZIMACAA0-S_V1.1_20231120.pdf
+ * SK-LCD3: https://www.ti.com/lit/zip/SPRCAM1
  *
- * Copyright (C) 2024 Texas Instruments Incorporated - http://www.ti.com/
+ * Copyright (C) 2026 Texas Instruments Incorporated - https://www.ti.com/
  */
 
 /dts-v1/;

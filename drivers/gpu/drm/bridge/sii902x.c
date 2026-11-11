@@ -190,6 +190,7 @@ struct sii902x {
 	 */
 	struct mutex mutex;
 	struct sii902x_audio {
+		bool mclk_enabled;
 		struct platform_device *pdev;
 		struct clk *mclk;
 		u32 i2s_fifo_sequence[4];
@@ -714,10 +715,13 @@ static int sii902x_audio_hw_params(struct device *dev, void *data,
 		}
 	}
 
-	ret = clk_prepare_enable(sii902x->audio.mclk);
-	if (ret) {
-		dev_err(dev, "Enabling mclk failed: %d\n", ret);
-		return ret;
+	if (!sii902x->audio.mclk_enabled) {
+		ret = clk_prepare_enable(sii902x->audio.mclk);
+		if (ret) {
+			dev_err(dev, "Enabling mclk failed: %d\n", ret);
+			return ret;
+		}
+		sii902x->audio.mclk_enabled = true;
 	}
 
 	if (sii902x->audio.mclk) {
@@ -796,6 +800,7 @@ out:
 
 	if (ret) {
 		clk_disable_unprepare(sii902x->audio.mclk);
+		sii902x->audio.mclk_enabled = false;
 		dev_err(dev, "%s: hdmi audio enable failed: %d\n", __func__,
 			ret);
 	}
@@ -816,7 +821,10 @@ static void sii902x_audio_shutdown(struct device *dev, void *data)
 
 	mutex_unlock(&sii902x->mutex);
 
-	clk_disable_unprepare(sii902x->audio.mclk);
+	if (sii902x->audio.mclk_enabled) {
+		clk_disable_unprepare(sii902x->audio.mclk);
+		sii902x->audio.mclk_enabled = false;
+	}
 }
 
 static int sii902x_audio_mute(struct device *dev, void *data,
@@ -897,6 +905,7 @@ static int sii902x_audio_codec_init(struct sii902x *sii902x,
 		.i2s = 1, /* Only i2s support for now. */
 		.spdif = 0,
 		.max_i2s_channels = 0,
+		.no_i2s_capture = 1,
 		.no_capture_mute = 1,
 	};
 	u8 lanes[4];

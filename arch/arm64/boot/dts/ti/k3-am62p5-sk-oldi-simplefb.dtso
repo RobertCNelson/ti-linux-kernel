@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later OR MIT
 /**
- * DT Overlay to add simplefb node for HDMI/OLDI displays.
+ * DT Overlay to add simplefb node for OLDI displays.
  *
  * This overlay adds the simple-framebuffer node with the appropriate
- * power-domains and clocks for HDMI or OLDI displays on DSS0.
+ * power-domains and clocks for OLDI displays on DSS0.
  *
  * Copyright (C) 2026 Texas Instruments Incorporated - https://www.ti.com/
  */
@@ -16,10 +16,11 @@
 &{/chosen} {
 	framebuffer0: framebuffer@0 {
 		compatible = "simple-framebuffer";
-		power-domains = <&k3_pds 186 TI_SCI_PD_EXCLUSIVE>;  /* DSS0 */
+		power-domains = <&k3_pds 186 TI_SCI_PD_EXCLUSIVE>,  /* DSS0 */
+				<&k3_pds 243 TI_SCI_PD_EXCLUSIVE>,  /* OLDI0 */
+				<&k3_pds 244 TI_SCI_PD_EXCLUSIVE>;  /* OLDI1 */
 		clocks = <&k3_clks 186 6>,       /* DSS0 fck */
-			 <&dss0_vp1_clk>,        /* DSS0 vp1 */
-			 <&k3_clks 186 2>;       /* DSS0 vp2 */
+			 <&dss0_vp1_clk>;        /* DSS0 vp1 (OLDI) */
 		display = <&dss0>;
 		status = "disabled";
 		bootph-all;
