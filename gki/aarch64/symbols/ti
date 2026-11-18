@@ -1017,6 +1017,7 @@
   mipi_dsi_dcs_set_display_off_multi
   mipi_dsi_dcs_set_display_on_multi
   mipi_dsi_dcs_set_tear_on_multi
+  mipi_dsi_dcs_soft_reset_multi
   mipi_dsi_dcs_write_buffer_multi
   mipi_dsi_detach
   mipi_dsi_driver_register_full
@@ -1909,6 +1910,8 @@
   v4l2_m2m_last_buffer_done
   v4l2_m2m_next_buf
   v4l2_m2m_release
+  v4l2_m2m_resume
+  v4l2_m2m_suspend
   v4l2_m2m_try_schedule
   v4l2_m2m_update_start_streaming_state
   v4l2_m2m_update_stop_streaming_state
