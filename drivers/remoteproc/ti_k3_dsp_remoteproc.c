@@ -58,6 +58,29 @@ static int k3_dsp_rproc_start(struct rproc *rproc)
 	return 0;
 }
 
+static int k3_dsp_rproc_handle_rsc(struct rproc *rproc, u32 rsc_type, void *rsc,
+				   int offset, int avail)
+{
+	int ret;
+	struct k3_rproc *kproc = rproc->priv;
+
+	ret = k3_rproc_handle_rsc(rproc, rsc_type, rsc, offset, avail);
+
+	if (ret != RSC_HANDLED)
+		return ret;
+
+	/* set DSP specific start handler */
+	if (!kproc->always_on) {
+		rproc->ops->start = k3_dsp_rproc_start;
+		/* unset prepare/unprepare if lreset not used */
+		if (!kproc->data->uses_lreset) {
+			rproc->ops->prepare = NULL;
+			rproc->ops->unprepare = NULL;
+		}
+	}
+
+	return ret;
+}
 static const struct rproc_ops k3_dsp_rproc_ops = {
 	.start			= k3_dsp_rproc_start,
 	.stop			= k3_rproc_stop,
@@ -66,7 +89,7 @@ static const struct rproc_ops k3_dsp_rproc_ops = {
 	.kick			= k3_rproc_kick,
 	.da_to_va		= k3_rproc_da_to_va,
 	.get_loaded_rsc_table	= k3_get_loaded_rsc_table,
-	.handle_rsc		= k3_rproc_handle_rsc,
+	.handle_rsc		= k3_dsp_rproc_handle_rsc,
 };
 
 static int k3_dsp_rproc_probe(struct platform_device *pdev)
