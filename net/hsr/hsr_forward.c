@@ -852,19 +852,13 @@ static int fill_frame_info(struct hsr_frame_info *frame,
 	if (port->type == HSR_PT_INTERLINK)
 		n_db = &hsr->proxy_node_db;
 
-	/* When offloaded, don't expect Supervision frame which
-	 * is terminated at h/w or f/w that offload the LRE
-	 */
-	if (frame->is_supervision && hsr->fwd_offloaded &&
-	    port->type != HSR_PT_MASTER)
-		return -1;
 
 	/* For Offloaded case, there is no need for node list since
 	 * firmware/hardware implements LRE function.
 	 */
 	frame->req_tx_port = tx_port;
 	frame->has_foreign_header = has_hsr_header;
-	if (!hsr->fwd_offloaded && !frame->has_foreign_header) {
+	if (!frame->has_foreign_header) {
 		frame->node_src = hsr_get_node(port, n_db, skb,
 					       frame->is_supervision,
 					       port->type);
@@ -910,8 +904,8 @@ void hsr_forward_skb(struct sk_buff *skb, struct hsr_port *port,
 	rcu_read_lock();
 	if (fill_frame_info(&frame, skb, port, tx_port, has_hsr_header) < 0)
 		goto out_drop;
-	/* No need to register frame when rx offload is supported */
-	if (!port->hsr->fwd_offloaded && !frame.has_foreign_header)
+
+	if (!frame.has_foreign_header)
 		hsr_register_frame_in(frame.node_src, port, frame.sequence_nr);
 	hsr_forward_do(&frame);
 	rcu_read_unlock();

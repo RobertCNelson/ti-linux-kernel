@@ -4171,6 +4171,7 @@ static void am65_cpsw_nuss_remove(struct platform_device *pdev)
 	 * dma_deconfigure(dev) before devres_release_all(dev)
 	 */
 	am65_cpsw_nuss_cleanup_ndev(common);
+	am65_cpsw_nuss_unregister_debugfs(common);
 	am65_cpsw_unregister_devlink(common);
 	am65_cpsw_nuss_remove_rx_chns(common);
 	am65_cpsw_nuss_remove_tx_chns(common);

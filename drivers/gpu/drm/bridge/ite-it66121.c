@@ -616,9 +616,25 @@ static const struct drm_edid *it66121_get_edid(struct it66121_ctx *ctx,
 					       struct drm_connector *connector)
 {
 	const struct drm_edid *drm_edid;
+	int ret;
 
 	mutex_lock(&ctx->lock);
+	ret = it66121_preamble_ddc(ctx);
+	if (ret) {
+		drm_edid = NULL;
+		goto out_unlock;
+	}
+
+	ret = regmap_write(ctx->regmap, IT66121_DDC_HEADER_REG,
+			   IT66121_DDC_HEADER_EDID);
+	if (ret) {
+		drm_edid = NULL;
+		goto out_unlock;
+	}
+
 	drm_edid = drm_edid_read_custom(connector, it66121_get_edid_block, ctx);
+
+out_unlock:
 	mutex_unlock(&ctx->lock);
 
 	return drm_edid;
@@ -980,29 +996,8 @@ static const struct drm_edid *it66121_bridge_edid_read(struct drm_bridge *bridge
 						       struct drm_connector *connector)
 {
 	struct it66121_ctx *ctx = container_of(bridge, struct it66121_ctx, bridge);
-	const struct drm_edid *drm_edid;
-	int ret;
 
-	mutex_lock(&ctx->lock);
-	ret = it66121_preamble_ddc(ctx);
-	if (ret) {
-		drm_edid = NULL;
-		goto out_unlock;
-	}
-
-	ret = regmap_write(ctx->regmap, IT66121_DDC_HEADER_REG,
-			   IT66121_DDC_HEADER_EDID);
-	if (ret) {
-		drm_edid = NULL;
-		goto out_unlock;
-	}
-
-	drm_edid = drm_edid_read_custom(connector, it66121_get_edid_block, ctx);
-
-out_unlock:
-	mutex_unlock(&ctx->lock);
-
-	return drm_edid;
+	return it66121_get_edid(ctx, connector);
 }
 
 static const struct drm_bridge_funcs it66121_bridge_funcs = {

@@ -50,7 +50,6 @@
  *				byte blocks can be addressed
  * 6		LookupSuccess	For switch, FDB lookup was successful (source
  *				MAC address found in FDB).
- *				For RED, NodeTable lookup was successful.
  * 7		Flood		Packet should be flooded (destination MAC
  *				address found in FDB). For switch only.
  * 8		RED_INFO	indicate whether the packet has redundancy

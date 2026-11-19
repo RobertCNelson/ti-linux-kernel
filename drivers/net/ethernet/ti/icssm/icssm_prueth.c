@@ -47,31 +47,7 @@
 
 #define TIMESYNC_SECONDS_BIT_MASK   0x0000ffffffffffff
 
-static struct prueth_fw_offsets fw_offsets_v2_1 = {
-	.hash_mask = ICSS_LRE_V2_1_HASH_MASK,
-	.index_array_offset = ICSS_LRE_V2_1_INDEX_ARRAY_NT,
-	.bin_array_offset = ICSS_LRE_V2_1_BIN_ARRAY,
-	.nt_array_offset = ICSS_LRE_V2_1_NODE_TABLE_NEW,
-	.index_array_loc = ICSS_LRE_V2_1_INDEX_ARRAY_LOC,
-	.bin_array_loc = ICSS_LRE_V2_1_BIN_ARRAY_LOC,
-	.nt_array_loc = ICSS_LRE_V2_1_NODE_TABLE_LOC,
-	.index_array_max_entries = ICSS_LRE_V2_1_INDEX_TBL_MAX_ENTRIES,
-	.bin_array_max_entries = ICSS_LRE_V2_1_BIN_TBL_MAX_ENTRIES,
-	.nt_array_max_entries = ICSS_LRE_V2_1_NODE_TBL_MAX_ENTRIES,
-	.iep_wrap = 0xffffffff,
-};
-
-static struct prueth_fw_offsets fw_offsets_v1_0 = {
-	.hash_mask = ICSS_LRE_V1_0_HASH_MASK,
-	.index_array_offset = ICSS_LRE_V1_0_INDEX_ARRAY_NT,
-	.bin_array_offset = ICSS_LRE_V1_0_BIN_ARRAY,
-	.nt_array_offset = ICSS_LRE_V1_0_NODE_TABLE_NEW,
-	.index_array_loc = ICSS_LRE_V1_0_INDEX_ARRAY_LOC,
-	.bin_array_loc = ICSS_LRE_V1_0_BIN_ARRAY_LOC,
-	.nt_array_loc = ICSS_LRE_V1_0_NODE_TABLE_LOC,
-	.index_array_max_entries = ICSS_LRE_V1_0_INDEX_TBL_MAX_ENTRIES,
-	.bin_array_max_entries = ICSS_LRE_V1_0_BIN_TBL_MAX_ENTRIES,
-	.nt_array_max_entries = ICSS_LRE_V1_0_NODE_TBL_MAX_ENTRIES,
+static struct prueth_fw_offsets fw_offsets = {
 	.iep_wrap = 0xffffffff,
 };
 
@@ -1318,13 +1294,10 @@ int icssm_emac_rx_packet(struct prueth_emac *emac, u16 *bd_rd_ptr,
 	bool buffer_wrapped = false;
 	void *src_addr, *dst_addr;
 	bool prp_rct = false;
-	u8 offset = 0, *ptr;
 	struct sk_buff *skb;
 	int pkt_block_size;
-	void *nt_dst_addr;
 	void *ocmc_ram;
 	u16 type = 0;
-	u8 macid[6];
 	int ret;
 	u64 ts;
 
@@ -1396,7 +1369,6 @@ int icssm_emac_rx_packet(struct prueth_emac *emac, u16 *bd_rd_ptr,
 	}
 
 	dst_addr = skb->data;
-	nt_dst_addr = dst_addr;
 
 	/* OCMC RAM is not cached and read order is not important */
 	ocmc_ram = (__force void *)emac->prueth->mem[PRUETH_MEM_OCMC].va;
@@ -1491,45 +1463,6 @@ int icssm_emac_rx_packet(struct prueth_emac *emac, u16 *bd_rd_ptr,
 		if (!pkt_info->lookup_success)
 			icssm_prueth_sw_learn_fdb(emac, skb->data + ETH_ALEN);
 	}
-	/* Check if VLAN tag is present since SV payload location will change
-	 * based on that
-	 */
-	if (PRUETH_IS_LRE(emac->prueth)) {
-		ptr = nt_dst_addr + PRUETH_ETH_TYPE_OFFSET;
-		type = (*ptr++) << PRUETH_ETH_TYPE_UPPER_SHIFT;
-		type |= *ptr++;
-		if (type == ETH_P_8021Q)
-			offset = 4;
-	}
-
-	/* TODO. The check for FW_REV_V1_0 is a workaround since
-	 * lookup of MAC address in Node table by this version of firmware
-	 * is not reliable. Once this issue is fixed in firmware, this driver
-	 * check has to be removed.
-	 */
-	if (PRUETH_IS_LRE(emac->prueth) && !pkt_info->lookup_success) {
-		if (PRUETH_IS_PRP(emac->prueth)) {
-			memcpy(macid,
-			       ((pkt_info->sv_frame) ?
-			       nt_dst_addr + LRE_SV_FRAME_OFFSET + offset :
-			       nt_dst_addr + ICSS_LRE_TAG_RCT_SIZE),
-			       ICSS_LRE_TAG_RCT_SIZE);
-
-			icssm_prueth_lre_nt_insert(emac->prueth, macid,
-						   emac->port_id,
-						   pkt_info->sv_frame,
-						   LRE_PROTO_PRP);
-
-		} else if (pkt_info->sv_frame) {
-			memcpy(macid,
-			       nt_dst_addr + LRE_SV_FRAME_OFFSET + offset,
-			       ICSS_LRE_TAG_RCT_SIZE);
-			icssm_prueth_lre_nt_insert(emac->prueth, macid,
-						   emac->port_id,
-						   pkt_info->sv_frame,
-						   LRE_PROTO_HSR);
-		}
-	}
 
 	/* For PRP, firmware always send us RCT. So skip Tag if
 	 * prp_tr_mode is IEC62439_3_TR_REMOVE_RCT
@@ -1537,40 +1470,35 @@ int icssm_emac_rx_packet(struct prueth_emac *emac, u16 *bd_rd_ptr,
 	if (prp_rct && emac->prueth->prp_tr_mode == IEC62439_3_TR_REMOVE_RCT)
 		actual_pkt_len -= ICSS_LRE_TAG_RCT_SIZE;
 
-	if (!pkt_info->sv_frame) {
-		skb_put(skb, actual_pkt_len);
-		if (icssm_prueth_ptp_rx_ts_is_enabled(emac) &&
-		    pkt_info->timestamp) {
-			src_addr = (void *)PTR_ALIGN((uintptr_t)src_addr,
-						     ICSS_BLOCK_SIZE);
-			if (emac->prueth->fw_data->fw_rev == FW_REV_V1_0) {
-				ts = icssm_iep_get_timestamp_cycles
-					(emac->prueth->iep,
-					 (void __iomem *)src_addr);
-			} else {
-				memcpy(&ts, src_addr, sizeof(ts));
-			}
-			ssh = skb_hwtstamps(skb);
-			memset(ssh, 0, sizeof(*ssh));
-			ssh->hwtstamp = ns_to_ktime(ts);
-			if (PRUETH_IS_HSR(emac->prueth)) {
-				ret =
-				icssm_prueth_hsr_ptp_ct_tx_ts_enqueue(emac,
-								      skb,
-								      type);
-				if (ret == -EAGAIN)
-					goto out;
-			}
+	skb_put(skb, actual_pkt_len);
+	if (icssm_prueth_ptp_rx_ts_is_enabled(emac) &&
+	    pkt_info->timestamp) {
+		src_addr = (void *)PTR_ALIGN((uintptr_t)src_addr,
+					     ICSS_BLOCK_SIZE);
+		if (emac->prueth->fw_data->fw_rev == FW_REV_V1_0) {
+			ts = icssm_iep_get_timestamp_cycles
+				(emac->prueth->iep,
+				 (void __iomem *)src_addr);
+		} else {
+			memcpy(&ts, src_addr, sizeof(ts));
 		}
-
-		/* send packet up the stack */
-		skb->protocol = eth_type_trans(skb, ndev);
-		local_bh_disable();
-		netif_receive_skb(skb);
-		local_bh_enable();
-	} else {
-		dev_kfree_skb_any(skb);
+		ssh = skb_hwtstamps(skb);
+		memset(ssh, 0, sizeof(*ssh));
+		ssh->hwtstamp = ns_to_ktime(ts);
+		if (PRUETH_IS_HSR(emac->prueth)) {
+			ret =
+			icssm_prueth_hsr_ptp_ct_tx_ts_enqueue(emac,
+							      skb,
+							      type);
+			if (ret == -EAGAIN)
+				goto out;
+		}
 	}
+	/* send packet up the stack */
+	skb->protocol = eth_type_trans(skb, ndev);
+	local_bh_disable();
+	netif_receive_skb(skb);
+	local_bh_enable();
 out:
 
 	/* update stats */
@@ -1774,8 +1702,6 @@ static void icssm_prueth_free_memory(struct prueth *prueth)
 {
 	if (PRUETH_IS_SWITCH(prueth))
 		icssm_prueth_sw_free_fdb_table(prueth);
-	if (PRUETH_IS_LRE(prueth))
-		icssm_prueth_lre_free_memory(prueth);
 }
 
 static void icssm_ptp_dram_init(struct prueth_emac *emac)
@@ -1862,9 +1788,6 @@ static int icssm_emac_ndo_open(struct net_device *ndev)
 			return ret;
 
 		icssm_prueth_lre_config_check_flags(prueth);
-		ret = icssm_prueth_lre_init_node_table(prueth);
-		if (ret)
-			return ret;
 	} else {
 		icssm_prueth_emac_config(emac);
 	}
@@ -3227,13 +3150,9 @@ static int icssm_prueth_probe(struct platform_device *pdev)
 	prueth->fw_offsets = devm_kzalloc(dev,
 					  sizeof(struct prueth_fw_offsets),
 					  GFP_KERNEL);
-	if (prueth->fw_data->fw_rev == FW_REV_V1_0) {
-		memcpy(prueth->fw_offsets,
-		       &fw_offsets_v1_0, sizeof(struct prueth_fw_offsets));
-	} else {
-		memcpy(prueth->fw_offsets,
-		       &fw_offsets_v2_1, sizeof(struct prueth_fw_offsets));
-	}
+
+	memcpy(prueth->fw_offsets,
+	       &fw_offsets, sizeof(struct prueth_fw_offsets));
 
 	eth_ports_node = of_get_child_by_name(np, "ethernet-ports");
 	if (!eth_ports_node)
